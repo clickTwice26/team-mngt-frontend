@@ -1,4 +1,3 @@
-import AppBar from "@mui/material/AppBar";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
@@ -6,17 +5,15 @@ import CardContent from "@mui/material/CardContent";
 import Chip from "@mui/material/Chip";
 import Container from "@mui/material/Container";
 import Stack from "@mui/material/Stack";
-import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
 import ApiIcon from "@mui/icons-material/Api";
-import GroupsIcon from "@mui/icons-material/Groups";
 import LaunchIcon from "@mui/icons-material/Launch";
 import MenuBookIcon from "@mui/icons-material/MenuBook";
 import StorageIcon from "@mui/icons-material/Storage";
 import WebIcon from "@mui/icons-material/Web";
 
-import { AuthNav } from "@/components/auth-nav";
 import { BackendStatus } from "@/components/backend-status";
+import { AppShell } from "@/components/layout/app-shell";
 import { env } from "@/config/env";
 
 const features = [
@@ -42,18 +39,8 @@ const features = [
 
 export default function Home() {
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
-      <AppBar position="static" color="primary">
-        <Toolbar>
-          <GroupsIcon sx={{ mr: 1.5 }} />
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            Team Management
-          </Typography>
-          <AuthNav />
-        </Toolbar>
-      </AppBar>
-
-      <Container maxWidth="md" component="main" sx={{ py: { xs: 6, md: 10 }, flexGrow: 1 }}>
+    <AppShell>
+      <Container maxWidth="md" disableGutters>
         <Stack spacing={4}>
           <Stack spacing={2}>
             <Box>
@@ -122,12 +109,6 @@ export default function Home() {
           </Box>
         </Stack>
       </Container>
-
-      <Box component="footer" sx={{ py: 3, textAlign: "center" }}>
-        <Typography variant="body2" color="text.secondary">
-          Built with FastAPI, MongoDB, Next.js & Material UI
-        </Typography>
-      </Box>
-    </Box>
+    </AppShell>
   );
 }
