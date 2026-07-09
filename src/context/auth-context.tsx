@@ -24,6 +24,8 @@ interface AuthContextValue {
   register: (payload: RegisterPayload) => Promise<void>;
   loginWithGoogle: (idToken: string) => Promise<void>;
   logout: () => void;
+  /** Replace the current user (e.g. after a profile/avatar update). */
+  updateUser: (user: User) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -98,6 +100,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       register,
       loginWithGoogle,
       logout,
+      updateUser: setUser,
     }),
     [user, token, loading, login, register, loginWithGoogle, logout],
   );

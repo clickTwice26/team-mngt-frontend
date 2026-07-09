@@ -3,6 +3,7 @@
 export interface Team {
   id: string;
   name: string;
+  company_id: string;
   description: string | null;
   is_active: boolean;
   created_at: string;
@@ -11,6 +12,7 @@ export interface Team {
 
 export interface TeamCreate {
   name: string;
+  company_id: string;
   description?: string | null;
   is_active?: boolean;
 }

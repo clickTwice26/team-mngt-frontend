@@ -8,6 +8,7 @@ export interface User {
   avatar_url: string | null;
   is_active: boolean;
   is_verified: boolean;
+  is_super_admin: boolean;
   created_at: string;
 }
 

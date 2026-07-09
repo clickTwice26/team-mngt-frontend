@@ -55,6 +55,36 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   return (await response.json()) as T;
 }
 
+async function upload<T>(
+  path: string,
+  formData: FormData,
+  options: Omit<RequestOptions, "body"> = {},
+): Promise<T> {
+  // No Content-Type header here — the browser sets multipart/form-data with
+  // the correct boundary itself; setting it manually breaks the upload.
+  const { headers, ...rest } = options;
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    ...rest,
+    method: "POST",
+    headers,
+    body: formData,
+  });
+
+  if (!response.ok) {
+    let detail: unknown;
+    try {
+      detail = await response.json();
+    } catch {
+      detail = await response.text();
+    }
+    const message =
+      (detail as { detail?: string })?.detail ??
+      `Request failed with status ${response.status}`;
+    throw new ApiError(response.status, message, detail);
+  }
+  return (await response.json()) as T;
+}
+
 export const apiClient = {
   get: <T>(path: string, options?: RequestOptions) =>
     request<T>(path, { ...options, method: "GET" }),
@@ -64,4 +94,5 @@ export const apiClient = {
     request<T>(path, { ...options, method: "PATCH", body }),
   delete: <T>(path: string, options?: RequestOptions) =>
     request<T>(path, { ...options, method: "DELETE" }),
+  upload,
 };

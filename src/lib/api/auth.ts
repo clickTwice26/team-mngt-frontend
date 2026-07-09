@@ -18,4 +18,12 @@ export const authApi = {
       cache: "no-store",
       headers: { Authorization: `Bearer ${token}` },
     }),
+
+  uploadAvatar: (token: string, file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return apiClient.upload<User>("/auth/me/avatar", formData, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  },
 };

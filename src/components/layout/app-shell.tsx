@@ -49,7 +49,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       />
       <Sidebar
         collapsed={collapsed}
-        onToggleCollapsed={toggleCollapsed}
         mobileOpen={mobileOpen}
         onMobileClose={() => setMobileOpen(false)}
       />
