@@ -1,20 +1,24 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Alert from "@mui/material/Alert";
+import AlertTitle from "@mui/material/AlertTitle";
+import Box from "@mui/material/Box";
+import Chip from "@mui/material/Chip";
+import CircularProgress from "@mui/material/CircularProgress";
+import Paper from "@mui/material/Paper";
+import Stack from "@mui/material/Stack";
+import Typography from "@mui/material/Typography";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import StorageIcon from "@mui/icons-material/Storage";
 
-import { healthApi, type HealthStatus } from "@/lib/api/health";
 import { env } from "@/config/env";
+import { healthApi, type HealthStatus } from "@/lib/api/health";
 
 type State =
   | { kind: "loading" }
   | { kind: "ok"; data: HealthStatus }
   | { kind: "error"; message: string };
-
-const dotColor: Record<State["kind"], string> = {
-  loading: "bg-amber-400",
-  ok: "bg-emerald-500",
-  error: "bg-rose-500",
-};
 
 /**
  * Client island that pings the FastAPI backend's readiness endpoint so the
@@ -41,31 +45,58 @@ export function BackendStatus() {
     };
   }, []);
 
-  const label =
-    state.kind === "loading"
-      ? "Checking backend…"
-      : state.kind === "ok"
-        ? `API ${state.data.status} · DB ${state.data.database ?? "?"}`
-        : `Backend unreachable`;
-
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-black/10 bg-black/[0.02] p-4 dark:border-white/15 dark:bg-white/[0.03]">
-      <div className="flex items-center gap-2">
-        <span
-          className={`inline-block h-2.5 w-2.5 rounded-full ${dotColor[state.kind]} ${
-            state.kind === "loading" ? "animate-pulse" : ""
-          }`}
-        />
-        <span className="text-sm font-medium">{label}</span>
-      </div>
-      <code className="truncate font-mono text-xs text-black/50 dark:text-white/50">
-        {env.apiUrl}
-      </code>
-      {state.kind === "error" && (
-        <p className="text-xs text-rose-500">
-          Start the backend, then reload. ({state.message})
-        </p>
+    <Paper variant="outlined" sx={{ p: 2.5 }}>
+      <Typography variant="overline" color="text.secondary">
+        Backend status
+      </Typography>
+
+      {state.kind === "loading" && (
+        <Stack direction="row" spacing={1.5} sx={{ mt: 1, alignItems: "center" }}>
+          <CircularProgress size={20} />
+          <Typography>Checking backend…</Typography>
+        </Stack>
       )}
-    </div>
+
+      {state.kind === "ok" && (
+        <Stack
+          direction="row"
+          spacing={1}
+          useFlexGap
+          sx={{ mt: 1, alignItems: "center", flexWrap: "wrap" }}
+        >
+          <Chip
+            icon={<CheckCircleIcon />}
+            color="success"
+            label={`API ${state.data.status}`}
+            size="small"
+          />
+          <Chip
+            icon={<StorageIcon />}
+            color={state.data.database === "connected" ? "success" : "warning"}
+            variant="outlined"
+            label={`DB ${state.data.database ?? "unknown"}`}
+            size="small"
+          />
+        </Stack>
+      )}
+
+      {state.kind === "error" && (
+        <Alert severity="error" sx={{ mt: 1 }}>
+          <AlertTitle>Backend unreachable</AlertTitle>
+          Start the backend, then reload. ({state.message})
+        </Alert>
+      )}
+
+      <Box sx={{ mt: 1.5 }}>
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ fontFamily: "monospace" }}
+        >
+          {env.apiUrl}
+        </Typography>
+      </Box>
+    </Paper>
   );
 }
