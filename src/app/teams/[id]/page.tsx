@@ -259,6 +259,7 @@ export default function TeamDetailPage() {
                   label="Search by name or email"
                   autoFocus
                   slotProps={{
+                    ...params.slotProps,
                     input: {
                       ...params.slotProps.input,
                       endAdornment: (

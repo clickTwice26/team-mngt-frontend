@@ -19,6 +19,14 @@ export const authApi = {
       headers: { Authorization: `Bearer ${token}` },
     }),
 
+  setPassword: (
+    token: string,
+    payload: { current_password?: string; new_password: string },
+  ) =>
+    apiClient.post<User>("/auth/me/password", payload, {
+      headers: { Authorization: `Bearer ${token}` },
+    }),
+
   uploadAvatar: (token: string, file: File) => {
     const formData = new FormData();
     formData.append("file", file);

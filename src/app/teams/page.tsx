@@ -11,11 +11,15 @@ import CircularProgress from "@mui/material/CircularProgress";
 import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
+import DialogContentText from "@mui/material/DialogContentText";
 import DialogTitle from "@mui/material/DialogTitle";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import IconButton from "@mui/material/IconButton";
 import MenuItem from "@mui/material/MenuItem";
 import MuiLink from "@mui/material/Link";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
+import Switch from "@mui/material/Switch";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
@@ -25,9 +29,12 @@ import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import AddIcon from "@mui/icons-material/Add";
+import DeleteIcon from "@mui/icons-material/Delete";
+import EditIcon from "@mui/icons-material/Edit";
 
 import { AppShell } from "@/components/layout/app-shell";
 import { useAuth } from "@/context/auth-context";
+import { ApiError } from "@/lib/api/client";
 import { companiesApi } from "@/lib/api/companies";
 import { teamsApi } from "@/lib/api/teams";
 import type { Company } from "@/types/company";
@@ -47,11 +54,17 @@ function TeamsPageContent() {
   const [state, setState] = useState<State>({ kind: "loading" });
   const [companies, setCompanies] = useState<Company[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingTeam, setEditingTeam] = useState<Team | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [companyId, setCompanyId] = useState("");
+  const [isActive, setIsActive] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  const [deleteTarget, setDeleteTarget] = useState<Team | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) router.replace("/login");
@@ -85,30 +98,73 @@ function TeamsPageContent() {
     }
   }, [token, user?.is_super_admin]);
 
-  const openDialog = () => {
+  const openCreateDialog = () => {
+    setEditingTeam(null);
+    setName("");
+    setDescription("");
     setCompanyId(companyIdFilter ?? "");
+    setIsActive(true);
+    setFormError(null);
     setDialogOpen(true);
   };
 
-  const handleCreate = async (event: React.FormEvent) => {
+  const openEditDialog = (team: Team) => {
+    setEditingTeam(team);
+    setName(team.name);
+    setDescription(team.description ?? "");
+    setCompanyId(team.company_id);
+    setIsActive(team.is_active);
+    setFormError(null);
+    setDialogOpen(true);
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!token) return;
     setFormError(null);
     setSubmitting(true);
     try {
-      await teamsApi.create(token, {
-        name,
-        company_id: companyId,
-        description: description.trim() || undefined,
-      });
+      if (editingTeam) {
+        await teamsApi.update(token, editingTeam.id, {
+          name,
+          description: description.trim() || null,
+          is_active: isActive,
+        });
+      } else {
+        await teamsApi.create(token, {
+          name,
+          company_id: companyId,
+          description: description.trim() || undefined,
+        });
+      }
       setDialogOpen(false);
+      setEditingTeam(null);
       setName("");
       setDescription("");
       load();
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Failed to create team.");
+      setFormError(
+        err instanceof Error
+          ? err.message
+          : `Failed to ${editingTeam ? "update" : "create"} team.`,
+      );
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!token || !deleteTarget) return;
+    setDeleteError(null);
+    setDeleting(true);
+    try {
+      await teamsApi.remove(token, deleteTarget.id);
+      setDeleteTarget(null);
+      load();
+    } catch (err) {
+      setDeleteError(err instanceof ApiError ? err.message : "Failed to delete team.");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -147,7 +203,7 @@ function TeamsPageContent() {
             )}
           </Stack>
           {user.is_super_admin && (
-            <Button variant="contained" startIcon={<AddIcon />} onClick={openDialog}>
+            <Button variant="contained" startIcon={<AddIcon />} onClick={openCreateDialog}>
               New Team
             </Button>
           )}
@@ -179,6 +235,7 @@ function TeamsPageContent() {
                   <TableCell>Description</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell>Created</TableCell>
+                  {user.is_super_admin && <TableCell align="right">Actions</TableCell>}
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -207,6 +264,27 @@ function TeamsPageContent() {
                         {new Date(team.created_at).toLocaleDateString()}
                       </Typography>
                     </TableCell>
+                    {user.is_super_admin && (
+                      <TableCell align="right">
+                        <IconButton
+                          aria-label={`Edit ${team.name}`}
+                          size="small"
+                          onClick={() => openEditDialog(team)}
+                        >
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                          aria-label={`Delete ${team.name}`}
+                          size="small"
+                          onClick={() => {
+                            setDeleteError(null);
+                            setDeleteTarget(team);
+                          }}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>
@@ -216,29 +294,30 @@ function TeamsPageContent() {
       </Stack>
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth maxWidth="xs">
-        <DialogTitle>New team</DialogTitle>
-        <Box component="form" onSubmit={handleCreate}>
+        <DialogTitle>{editingTeam ? "Edit team" : "New team"}</DialogTitle>
+        <Box component="form" onSubmit={handleSubmit}>
           <DialogContent>
             <Stack spacing={2}>
               {formError && <Alert severity="error">{formError}</Alert>}
-              {companies.length === 0 ? (
-                <Alert severity="info">Create a company first before adding teams.</Alert>
-              ) : (
-                <TextField
-                  select
-                  label="Company"
-                  value={companyId}
-                  onChange={(e) => setCompanyId(e.target.value)}
-                  required
-                  fullWidth
-                >
-                  {companies.map((c) => (
-                    <MenuItem key={c.id} value={c.id}>
-                      {c.name}
-                    </MenuItem>
-                  ))}
-                </TextField>
-              )}
+              {!editingTeam &&
+                (companies.length === 0 ? (
+                  <Alert severity="info">Create a company first before adding teams.</Alert>
+                ) : (
+                  <TextField
+                    select
+                    label="Company"
+                    value={companyId}
+                    onChange={(e) => setCompanyId(e.target.value)}
+                    required
+                    fullWidth
+                  >
+                    {companies.map((c) => (
+                      <MenuItem key={c.id} value={c.id}>
+                        {c.name}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                ))}
               <TextField
                 label="Name"
                 value={name}
@@ -254,6 +333,17 @@ function TeamsPageContent() {
                 multiline
                 minRows={2}
               />
+              {editingTeam && (
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={isActive}
+                      onChange={(e) => setIsActive(e.target.checked)}
+                    />
+                  }
+                  label="Active"
+                />
+              )}
             </Stack>
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}>
@@ -261,12 +351,42 @@ function TeamsPageContent() {
             <Button
               type="submit"
               variant="contained"
-              disabled={submitting || !name.trim() || !companyId}
+              disabled={submitting || !name.trim() || (!editingTeam && !companyId)}
             >
-              {submitting ? "Creating…" : "Create"}
+              {submitting
+                ? editingTeam
+                  ? "Saving…"
+                  : "Creating…"
+                : editingTeam
+                  ? "Save"
+                  : "Create"}
             </Button>
           </DialogActions>
         </Box>
+      </Dialog>
+
+      <Dialog open={Boolean(deleteTarget)} onClose={() => setDeleteTarget(null)} fullWidth maxWidth="xs">
+        <DialogTitle>Delete team</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2}>
+            {deleteError && <Alert severity="error">{deleteError}</Alert>}
+            <DialogContentText>
+              Are you sure you want to delete <strong>{deleteTarget?.name}</strong>? This
+              can&apos;t be undone.
+            </DialogContentText>
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setDeleteTarget(null)}>Cancel</Button>
+          <Button
+            color="error"
+            variant="contained"
+            disabled={deleting}
+            onClick={() => void handleDelete()}
+          >
+            {deleting ? "Deleting…" : "Delete"}
+          </Button>
+        </DialogActions>
       </Dialog>
     </AppShell>
   );

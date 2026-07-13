@@ -8,8 +8,20 @@ export interface User {
   avatar_url: string | null;
   is_active: boolean;
   is_verified: boolean;
+  role: PlatformRole;
+  /** True for platform developers too — they clear every super-admin gate. */
   is_super_admin: boolean;
+  /** False for Google-only accounts that have never set a password. */
+  has_password: boolean;
   created_at: string;
+}
+
+export type PlatformRole = "member" | "super_admin" | "platform_developer";
+
+/** Fields a platform developer may edit on another user's account. */
+export interface AdminUserUpdate {
+  full_name?: string | null;
+  is_active?: boolean;
 }
 
 export interface AuthToken {

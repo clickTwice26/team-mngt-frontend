@@ -19,6 +19,7 @@ import AccountCircleIcon from "@mui/icons-material/AccountCircle";
 import ApartmentIcon from "@mui/icons-material/Apartment";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import GroupsIcon from "@mui/icons-material/Groups";
+import PeopleAltIcon from "@mui/icons-material/PeopleAlt";
 
 import { useAuth } from "@/context/auth-context";
 
@@ -40,6 +41,12 @@ const SUPER_ADMIN_NAV_ITEM: NavItem = {
   label: "Companies",
   href: "/companies",
   icon: <ApartmentIcon />,
+};
+
+const PLATFORM_DEVELOPER_NAV_ITEM: NavItem = {
+  label: "Users",
+  href: "/users",
+  icon: <PeopleAltIcon />,
 };
 
 const PROFILE_NAV_ITEM: NavItem = {
@@ -66,9 +73,11 @@ export function Sidebar({ collapsed, mobileOpen, onMobileClose }: Props) {
   const isDesktop = useMediaQuery(theme.breakpoints.up("sm"));
   const pathname = usePathname();
   const { user } = useAuth();
-  const mainNavItems = user?.is_super_admin
-    ? [...MAIN_NAV_ITEMS, SUPER_ADMIN_NAV_ITEM]
-    : MAIN_NAV_ITEMS;
+  const mainNavItems = [
+    ...MAIN_NAV_ITEMS,
+    ...(user?.is_super_admin ? [SUPER_ADMIN_NAV_ITEM] : []),
+    ...(user?.role === "platform_developer" ? [PLATFORM_DEVELOPER_NAV_ITEM] : []),
+  ];
 
   const mini = isDesktop && collapsed;
   const width = collapsed ? MINI_DRAWER_WIDTH : DRAWER_WIDTH;

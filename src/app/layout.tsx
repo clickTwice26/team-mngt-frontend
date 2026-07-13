@@ -4,7 +4,7 @@ import { ThemeProvider } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
 
 import { AuthProvider } from "@/context/auth-context";
-import theme, { roboto } from "@/theme";
+import theme, { googleSans } from "@/theme";
 
 export const metadata: Metadata = {
   title: "Team Management",
@@ -17,7 +17,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={roboto.className}>
+    <html lang="en" className={googleSans.className}>
       <body>
         <AppRouterCacheProvider options={{ key: "mui" }}>
           <ThemeProvider theme={theme}>

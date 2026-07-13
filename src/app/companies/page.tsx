@@ -11,10 +11,14 @@ import CircularProgress from "@mui/material/CircularProgress";
 import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
+import DialogContentText from "@mui/material/DialogContentText";
 import DialogTitle from "@mui/material/DialogTitle";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import IconButton from "@mui/material/IconButton";
 import MuiLink from "@mui/material/Link";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
+import Switch from "@mui/material/Switch";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
@@ -24,9 +28,12 @@ import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import AddIcon from "@mui/icons-material/Add";
+import DeleteIcon from "@mui/icons-material/Delete";
+import EditIcon from "@mui/icons-material/Edit";
 
 import { AppShell } from "@/components/layout/app-shell";
 import { useAuth } from "@/context/auth-context";
+import { ApiError } from "@/lib/api/client";
 import { companiesApi } from "@/lib/api/companies";
 import type { Company } from "@/types/company";
 
@@ -41,10 +48,16 @@ export default function CompaniesPage() {
 
   const [state, setState] = useState<State>({ kind: "loading" });
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingCompany, setEditingCompany] = useState<Company | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [isActive, setIsActive] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  const [deleteTarget, setDeleteTarget] = useState<Company | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) router.replace("/login");
@@ -88,24 +101,72 @@ export default function CompaniesPage() {
     );
   }
 
-  const handleCreate = async (event: React.FormEvent) => {
+  const openCreateDialog = () => {
+    setEditingCompany(null);
+    setName("");
+    setDescription("");
+    setIsActive(true);
+    setFormError(null);
+    setDialogOpen(true);
+  };
+
+  const openEditDialog = (company: Company) => {
+    setEditingCompany(company);
+    setName(company.name);
+    setDescription(company.description ?? "");
+    setIsActive(company.is_active);
+    setFormError(null);
+    setDialogOpen(true);
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!token) return;
     setFormError(null);
     setSubmitting(true);
     try {
-      await companiesApi.create(token, {
-        name,
-        description: description.trim() || undefined,
-      });
+      if (editingCompany) {
+        await companiesApi.update(token, editingCompany.id, {
+          name,
+          description: description.trim() || null,
+          is_active: isActive,
+        });
+      } else {
+        await companiesApi.create(token, {
+          name,
+          description: description.trim() || undefined,
+        });
+      }
       setDialogOpen(false);
+      setEditingCompany(null);
       setName("");
       setDescription("");
       load();
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Failed to create company.");
+      setFormError(
+        err instanceof Error
+          ? err.message
+          : `Failed to ${editingCompany ? "update" : "create"} company.`,
+      );
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!token || !deleteTarget) return;
+    setDeleteError(null);
+    setDeleting(true);
+    try {
+      await companiesApi.remove(token, deleteTarget.id);
+      setDeleteTarget(null);
+      load();
+    } catch (err) {
+      setDeleteError(
+        err instanceof ApiError ? err.message : "Failed to delete company.",
+      );
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -125,7 +186,7 @@ export default function CompaniesPage() {
               <Chip label={`${state.total} total`} size="small" variant="outlined" />
             )}
           </Stack>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialogOpen(true)}>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreateDialog}>
             New Company
           </Button>
         </Stack>
@@ -156,6 +217,7 @@ export default function CompaniesPage() {
                   <TableCell>Description</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell>Created</TableCell>
+                  <TableCell align="right">Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -188,6 +250,25 @@ export default function CompaniesPage() {
                         {new Date(company.created_at).toLocaleDateString()}
                       </Typography>
                     </TableCell>
+                    <TableCell align="right">
+                      <IconButton
+                        aria-label={`Edit ${company.name}`}
+                        size="small"
+                        onClick={() => openEditDialog(company)}
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                      <IconButton
+                        aria-label={`Delete ${company.name}`}
+                        size="small"
+                        onClick={() => {
+                          setDeleteError(null);
+                          setDeleteTarget(company);
+                        }}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -197,8 +278,8 @@ export default function CompaniesPage() {
       </Stack>
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth maxWidth="xs">
-        <DialogTitle>New company</DialogTitle>
-        <Box component="form" onSubmit={handleCreate}>
+        <DialogTitle>{editingCompany ? "Edit company" : "New company"}</DialogTitle>
+        <Box component="form" onSubmit={handleSubmit}>
           <DialogContent>
             <Stack spacing={2}>
               {formError && <Alert severity="error">{formError}</Alert>}
@@ -218,15 +299,56 @@ export default function CompaniesPage() {
                 multiline
                 minRows={2}
               />
+              {editingCompany && (
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={isActive}
+                      onChange={(e) => setIsActive(e.target.checked)}
+                    />
+                  }
+                  label="Active"
+                />
+              )}
             </Stack>
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}>
             <Button onClick={() => setDialogOpen(false)}>Cancel</Button>
             <Button type="submit" variant="contained" disabled={submitting || !name.trim()}>
-              {submitting ? "Creating…" : "Create"}
+              {submitting
+                ? editingCompany
+                  ? "Saving…"
+                  : "Creating…"
+                : editingCompany
+                  ? "Save"
+                  : "Create"}
             </Button>
           </DialogActions>
         </Box>
+      </Dialog>
+
+      <Dialog open={Boolean(deleteTarget)} onClose={() => setDeleteTarget(null)} fullWidth maxWidth="xs">
+        <DialogTitle>Delete company</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2}>
+            {deleteError && <Alert severity="error">{deleteError}</Alert>}
+            <DialogContentText>
+              Are you sure you want to delete <strong>{deleteTarget?.name}</strong>? This
+              can&apos;t be undone.
+            </DialogContentText>
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setDeleteTarget(null)}>Cancel</Button>
+          <Button
+            color="error"
+            variant="contained"
+            disabled={deleting}
+            onClick={() => void handleDelete()}
+          >
+            {deleting ? "Deleting…" : "Delete"}
+          </Button>
+        </DialogActions>
       </Dialog>
     </AppShell>
   );
