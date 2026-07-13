@@ -30,6 +30,7 @@ import Typography from "@mui/material/Typography";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
+import ManageAccountsIcon from "@mui/icons-material/ManageAccounts";
 
 import { AppShell } from "@/components/layout/app-shell";
 import { useAuth } from "@/context/auth-context";
@@ -251,6 +252,14 @@ export default function CompaniesPage() {
                       </Typography>
                     </TableCell>
                     <TableCell align="right">
+                      <IconButton
+                        aria-label={`Manage ${company.name}`}
+                        size="small"
+                        component={Link}
+                        href={`/companies/${company.id}`}
+                      >
+                        <ManageAccountsIcon fontSize="small" />
+                      </IconButton>
                       <IconButton
                         aria-label={`Edit ${company.name}`}
                         size="small"

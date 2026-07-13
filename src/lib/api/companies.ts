@@ -1,6 +1,8 @@
-/** Typed API functions for the Company resource (all require authentication). */
+/** Typed API functions for the Company resource and its employee assignments
+ * (all require authentication). */
 
 import { apiClient } from "@/lib/api/client";
+import type { CompanyMembership } from "@/types/company-membership";
 import type { Company, CompanyCreate, CompanyUpdate } from "@/types/company";
 import type { Page } from "@/types/team";
 
@@ -32,6 +34,24 @@ export const companiesApi = {
 
   remove: (token: string, id: string) =>
     apiClient.delete<{ message: string }>(`/companies/${id}`, {
+      headers: authHeaders(token),
+    }),
+
+  listEmployees: (token: string, companyId: string) =>
+    apiClient.get<CompanyMembership[]>(`/companies/${companyId}/employees`, {
+      cache: "no-store",
+      headers: authHeaders(token),
+    }),
+
+  addEmployee: (token: string, companyId: string, userId: string) =>
+    apiClient.post<CompanyMembership>(
+      `/companies/${companyId}/employees`,
+      { user_id: userId },
+      { headers: authHeaders(token) },
+    ),
+
+  removeEmployee: (token: string, companyId: string, userId: string) =>
+    apiClient.delete<{ message: string }>(`/companies/${companyId}/employees/${userId}`, {
       headers: authHeaders(token),
     }),
 };
