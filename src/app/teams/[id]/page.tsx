@@ -64,15 +64,10 @@ type TeamState =
 const BASE_TABS = ["overview", "members", "tasks"] as const;
 type TabKey = (typeof BASE_TABS)[number] | "hours" | "meetings" | "discussion" | "logs";
 
-/** How wide each tab is allowed to get. The default is a reading measure: prose
- *  and forms get unpleasant to scan past ~720px. Tabs that lay out *data* — a
- *  filter bar, a table, a calendar — earn the full width instead, capped only so
- *  the content doesn't stretch to the far edge of an ultrawide display. */
-const TAB_MAX_WIDTH: Partial<Record<TabKey, number>> = {
-  tasks: 1400,
-  hours: 1100,
-  meetings: 1100,
-};
+/** Every tab gets the full width of the shell. The cap exists only so content
+ *  doesn't stretch to the far edge of an ultrawide display, where a row of
+ *  controls becomes hard to track from one end to the other. */
+const TAB_MAX_WIDTH = 1400;
 
 function TeamDetailPageContent() {
   const { id } = useParams<{ id: string }>();
@@ -175,7 +170,7 @@ function TeamDetailPageContent() {
     <AppShell>
       {/* The hours tab is two columns (entries + calendar), so it needs more
           room than the single-column tabs. */}
-      <Stack spacing={3} sx={{ maxWidth: TAB_MAX_WIDTH[tab] ?? 720 }}>
+      <Stack spacing={3} sx={{ maxWidth: TAB_MAX_WIDTH }}>
         <Stack spacing={1}>
           <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
             <Typography variant="h4" component="h1" sx={{ fontWeight: 700 }}>

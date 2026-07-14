@@ -4,12 +4,12 @@ import { useEffect, useState } from "react";
 import Alert from "@mui/material/Alert";
 import Avatar from "@mui/material/Avatar";
 import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
 import IconButton from "@mui/material/IconButton";
 import InputAdornment from "@mui/material/InputAdornment";
 import MenuItem from "@mui/material/MenuItem";
+import Pagination from "@mui/material/Pagination";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
@@ -32,7 +32,7 @@ import { teamsApi } from "@/lib/api/teams";
 import type { Activity, ActivityAction } from "@/types/activity";
 import type { Team } from "@/types/team";
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE_OPTIONS = [25, 50, 100];
 
 type State =
   | { kind: "loading" }
@@ -94,6 +94,7 @@ function groupByDay(items: Activity[]): { label: string; items: Activity[] }[] {
 export function ActivityTab({ team, token }: { team: Team; token: string }) {
   const [state, setState] = useState<State>({ kind: "loading" });
   const [offset, setOffset] = useState(0);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0]);
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
   // What's actually sent. Debounced so typing doesn't fire a request per key.
@@ -120,10 +121,19 @@ export function ActivityTab({ team, token }: { team: Team; token: string }) {
         .listActivity(token, team.id, {
           q: query || undefined,
           subjectType: filter === "all" ? undefined : filter,
-          limit: PAGE_SIZE,
+          limit: pageSize,
           offset,
         })
-        .then((page) => setState({ kind: "ok", items: page.items, total: page.total }))
+        .then((page) => {
+          // Nothing deletes from an append-only log, but a filter can still
+          // strand you past the end of a shorter result set. Step back rather
+          // than show an empty page — the offset change re-runs this effect.
+          if (page.items.length === 0 && page.total > 0 && offset >= page.total) {
+            setOffset(Math.max(0, (Math.ceil(page.total / pageSize) - 1) * pageSize));
+            return;
+          }
+          setState({ kind: "ok", items: page.items, total: page.total });
+        })
         .catch((err: unknown) =>
           setState({
             kind: "error",
@@ -132,7 +142,7 @@ export function ActivityTab({ team, token }: { team: Team; token: string }) {
           }),
         );
     });
-  }, [token, team.id, offset, query, filter]);
+  }, [token, team.id, offset, pageSize, query, filter]);
 
   // Search and filtering happen server-side, over the whole log rather than the
   // page in hand — the entry you're hunting for is rarely on the page you
@@ -141,9 +151,10 @@ export function ActivityTab({ team, token }: { team: Team; token: string }) {
   const total = state.kind === "ok" ? state.total : 0;
   const groups = groupByDay(items);
   const shownTo = offset + items.length;
+  const pageCount = Math.ceil(total / pageSize);
 
   return (
-    <Stack spacing={2} sx={{ maxWidth: 860 }}>
+    <Stack spacing={2}>
       <Alert severity="info" icon={<LockIcon fontSize="inherit" />}>
         Every action on this team is recorded here permanently. Entries can&apos;t be
         edited or deleted — not by anyone, including you.
@@ -271,25 +282,42 @@ export function ActivityTab({ team, token }: { team: Team; token: string }) {
         </Box>
       ))}
 
-      {(offset > 0 || shownTo < total) && (
-        <Stack direction="row" spacing={1} sx={{ justifyContent: "space-between" }}>
-          <Button
-            size="small"
-            disabled={offset === 0}
-            onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
-          >
-            Newer
-          </Button>
-          <Typography variant="caption" color="text.secondary" sx={{ alignSelf: "center" }}>
-            {offset + 1}–{shownTo} of {total}
+      {state.kind === "ok" && total > 0 && (
+        <Stack
+          direction={{ xs: "column", sm: "row" }}
+          spacing={1.5}
+          sx={{ alignItems: "center", justifyContent: "space-between", pt: 0.5 }}
+        >
+          <Typography variant="caption" color="text.secondary">
+            Showing {offset + 1}–{shownTo} of {total}
           </Typography>
-          <Button
+          {pageCount > 1 && (
+            <Pagination
+              count={pageCount}
+              page={Math.floor(offset / pageSize) + 1}
+              onChange={(_, page) => setOffset((page - 1) * pageSize)}
+              size="small"
+              shape="rounded"
+              color="primary"
+            />
+          )}
+          <TextField
+            select
             size="small"
-            disabled={shownTo >= total}
-            onClick={() => setOffset(offset + PAGE_SIZE)}
+            label="Per page"
+            value={pageSize}
+            onChange={(e) => {
+              setPageSize(Number(e.target.value));
+              setOffset(0);
+            }}
+            sx={{ minWidth: 110 }}
           >
-            Older
-          </Button>
+            {PAGE_SIZE_OPTIONS.map((size) => (
+              <MenuItem key={size} value={size}>
+                {size}
+              </MenuItem>
+            ))}
+          </TextField>
         </Stack>
       )}
     </Stack>
