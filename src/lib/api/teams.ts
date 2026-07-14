@@ -114,8 +114,14 @@ export const teamsApi = {
       headers: authHeaders(token),
     }),
 
-  listActivity: (token: string, teamId: string, params?: { limit?: number; offset?: number }) => {
+  listActivity: (
+    token: string,
+    teamId: string,
+    params?: { q?: string; subjectType?: string; limit?: number; offset?: number },
+  ) => {
     const query = new URLSearchParams();
+    if (params?.q) query.set("q", params.q);
+    if (params?.subjectType) query.set("subject_type", params.subjectType);
     if (params?.limit != null) query.set("limit", String(params.limit));
     if (params?.offset != null) query.set("offset", String(params.offset));
     const suffix = query.toString() ? `?${query.toString()}` : "";
@@ -215,6 +221,12 @@ export const teamsApi = {
       headers: authHeaders(token),
     });
   },
+
+  getWorkLog: (token: string, teamId: string, entryId: string) =>
+    apiClient.get<WorkLogEntry>(`/teams/${teamId}/work-logs/${entryId}`, {
+      cache: "no-store",
+      headers: authHeaders(token),
+    }),
 
   createWorkLog: (token: string, teamId: string, payload: WorkLogCreate) =>
     apiClient.post<WorkLogEntry>(`/teams/${teamId}/work-logs`, payload, {

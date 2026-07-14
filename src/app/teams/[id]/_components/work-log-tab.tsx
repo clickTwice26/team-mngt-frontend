@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import NextLink from "next/link";
 import Alert from "@mui/material/Alert";
-import Badge from "@mui/material/Badge";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
@@ -25,9 +24,7 @@ import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutlineOutlined
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import TaskAltIcon from "@mui/icons-material/TaskAlt";
-import { DateCalendar } from "@mui/x-date-pickers/DateCalendar";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
-import { PickerDay, type PickerDayProps } from "@mui/x-date-pickers/PickerDay";
 import { TimePicker } from "@mui/x-date-pickers/TimePicker";
 import dayjs, { Dayjs } from "dayjs";
 
@@ -39,6 +36,7 @@ import type { Team } from "@/types/team";
 import type { WorkLogEntry } from "@/types/work-log";
 
 import { AttachmentView } from "./attachment-view";
+import { LoggedDaysCalendar } from "./logged-days-calendar";
 
 
 const NONE = "__none__"; // sentinel for the "no task" option in the select
@@ -74,38 +72,6 @@ function minutesInRange(entries: WorkLogEntry[], from: Dayjs, to: Dayjs): number
       return !t.isBefore(from) && t.isBefore(to);
     })
     .reduce((sum, e) => sum + e.minutes, 0);
-}
-
-/** Minutes logged per local calendar day, keyed YYYY-MM-DD. */
-function minutesByDay(entries: WorkLogEntry[]): Map<string, number> {
-  const totals = new Map<string, number>();
-  for (const entry of entries) {
-    const key = dayjs(entry.started_at).format("YYYY-MM-DD");
-    totals.set(key, (totals.get(key) ?? 0) + entry.minutes);
-  }
-  return totals;
-}
-
-/** Extra prop threaded into the day slot via `slotProps.day`. */
-type LoggedDayProps = PickerDayProps & { loggedDays?: Map<string, number> };
-
-/** Calendar day cell, dotted when hours were logged that day. */
-function LoggedDay(props: LoggedDayProps) {
-  const { loggedDays, day, outsideCurrentMonth, ...other } = props;
-  const hasEntries =
-    !outsideCurrentMonth && (loggedDays?.get(day.format("YYYY-MM-DD")) ?? 0) > 0;
-
-  return (
-    <Badge
-      overlap="circular"
-      variant="dot"
-      color="primary"
-      invisible={!hasEntries}
-      anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-    >
-      <PickerDay day={day} outsideCurrentMonth={outsideCurrentMonth} {...other} />
-    </Badge>
-  );
 }
 
 export function WorkLogTab({
@@ -163,7 +129,6 @@ export function WorkLogTab({
   };
 
   const entries = state.kind === "ok" ? state.entries : [];
-  const loggedDays = minutesByDay(entries);
 
   // Entries are newest-first from the API; within a day, read them chronologically.
   const dayEntries = entries
@@ -331,24 +296,11 @@ export function WorkLogTab({
       </Stack>
 
       {/* --- Right: the calendar --------------------------------------------- */}
-      <Paper variant="outlined" sx={{ flexShrink: 0 }}>
-        <DateCalendar
-          value={selectedDate}
-          onChange={(value) => value && setSelectedDate(value.startOf("day"))}
-          slots={{ day: LoggedDay }}
-          // The cast is MUI's own pattern for passing custom props to a slot:
-          // `slotProps.day` is typed against the built-in day, which knows
-          // nothing about `loggedDays`.
-          slotProps={{ day: { loggedDays } as Partial<LoggedDayProps> }}
-        />
-        <Typography
-          variant="caption"
-          color="text.secondary"
-          sx={{ display: "block", px: 2, pb: 1.5 }}
-        >
-          Dotted days have logged hours.
-        </Typography>
-      </Paper>
+      <LoggedDaysCalendar
+        entries={entries}
+        value={selectedDate}
+        onChange={setSelectedDate}
+      />
 
       {dialogOpen && (
         <WorkLogDialog

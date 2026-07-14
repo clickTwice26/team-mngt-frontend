@@ -30,6 +30,7 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
+import AccessTimeIcon from "@mui/icons-material/AccessTime";
 import InsightsIcon from "@mui/icons-material/Insights";
 import ScheduleIcon from "@mui/icons-material/Schedule";
 
@@ -200,6 +201,9 @@ function TeamDetailPageContent() {
             team={team}
             token={token!}
             canManage={user.is_super_admin}
+            // Founders (and the developer) can look up anyone's hours — the same
+            // people who can read the log.
+            canViewHours={canViewLogs}
             // Setting a member's working method is developer-only (the endpoint
             // is gated on PlatformDeveloperDep).
             canSetWork={user.role === "platform_developer"}
@@ -339,11 +343,14 @@ function TeamMembersTab({
   token,
   canManage,
   canSetWork,
+  canViewHours,
 }: {
   team: Team;
   token: string;
   canManage: boolean;
   canSetWork: boolean;
+  /** Founder or developer: may open any member's logged hours. */
+  canViewHours: boolean;
 }) {
   const [workTarget, setWorkTarget] = useState<Membership | null>(null);
   const [members, setMembers] = useState<Membership[]>([]);
@@ -466,6 +473,22 @@ function TeamMembersTab({
                 alignItems="flex-start"
                 secondaryAction={
                   <Stack direction="row" spacing={0.5}>
+                    {/* Only hourly members keep a work log, so the button is
+                        meaningless — and the API 403s — for anyone else. */}
+                    {canViewHours && membership.work.mode === "hourly" && (
+                      <Tooltip title="Logged hours">
+                        <IconButton
+                          edge="end"
+                          component={NextLink}
+                          href={`/teams/${team.id}/members/${membership.user.id}/hours`}
+                          aria-label={`Logged hours for ${
+                            membership.user.full_name || membership.user.email
+                          }`}
+                        >
+                          <AccessTimeIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
                     {canSetWork && (
                       <Tooltip title="Performance">
                         <IconButton

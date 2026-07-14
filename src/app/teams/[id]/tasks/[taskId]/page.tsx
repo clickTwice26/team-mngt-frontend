@@ -146,7 +146,7 @@ export default function TaskDiscussionPage() {
                 Discussion
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Between the submitter and the assignees.
+                Between the submitter, the assignees, and a founder.
               </Typography>
             </Box>
 

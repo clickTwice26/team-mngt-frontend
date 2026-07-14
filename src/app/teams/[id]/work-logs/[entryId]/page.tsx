@@ -52,17 +52,13 @@ export default function WorkLogDiscussionPage() {
   const load = useCallback(async () => {
     if (!token) return;
     try {
-      // There's no fetch-one-entry endpoint, so pull the member's log and pick
-      // ours out. The comments call is what enforces access, not this.
-      const [entries, comments] = await Promise.all([
-        teamsApi.listWorkLogs(token, teamId),
+      // Fetch the entry directly. It used to be picked out of *the caller's own*
+      // log, which meant a founder opening someone else's entry always got
+      // "not found" — the entry was never in their list to begin with.
+      const [entry, comments] = await Promise.all([
+        teamsApi.getWorkLog(token, teamId, entryId),
         teamsApi.listWorkLogComments(token, teamId, entryId),
       ]);
-      const entry = entries.find((e) => e.id === entryId);
-      if (!entry) {
-        setState({ kind: "error", message: "Work log entry not found." });
-        return;
-      }
       setState({ kind: "ok", entry, comments });
     } catch (err) {
       setState({
@@ -194,7 +190,7 @@ export default function WorkLogDiscussionPage() {
                 Discussion
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Between the member who logged these hours and a super admin.
+                Between the member who logged these hours, a founder, and an admin.
               </Typography>
             </Box>
 
