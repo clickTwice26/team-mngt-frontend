@@ -3,6 +3,8 @@
 
 import { apiClient } from "@/lib/api/client";
 import type { Membership, WorkArrangement } from "@/types/membership";
+import type { Meeting, MeetingCreate, MeetingUpdate } from "@/types/meeting";
+import type { MeetingComment, MeetingCommentCreate } from "@/types/meeting-comment";
 import type { MemberPerformance } from "@/types/performance";
 import type { Page, Team, TeamCreate, TeamUpdate } from "@/types/team";
 import type { Task, TaskAttachment, TaskCreate, TaskUpdate } from "@/types/task";
@@ -102,6 +104,79 @@ export const teamsApi = {
       headers: authHeaders(token),
     });
   },
+
+  // --- Meetings (any team member can view; super admins schedule) ---
+
+  listMeetings: (token: string, teamId: string) =>
+    apiClient.get<Meeting[]>(`/teams/${teamId}/meetings`, {
+      cache: "no-store",
+      headers: authHeaders(token),
+    }),
+
+  getMeeting: (token: string, teamId: string, meetingId: string) =>
+    apiClient.get<Meeting>(`/teams/${teamId}/meetings/${meetingId}`, {
+      cache: "no-store",
+      headers: authHeaders(token),
+    }),
+
+  createMeeting: (token: string, teamId: string, payload: MeetingCreate) =>
+    apiClient.post<Meeting>(`/teams/${teamId}/meetings`, payload, {
+      headers: authHeaders(token),
+    }),
+
+  updateMeeting: (
+    token: string,
+    teamId: string,
+    meetingId: string,
+    payload: MeetingUpdate,
+  ) =>
+    apiClient.patch<Meeting>(`/teams/${teamId}/meetings/${meetingId}`, payload, {
+      headers: authHeaders(token),
+    }),
+
+  removeMeeting: (token: string, teamId: string, meetingId: string) =>
+    apiClient.delete<{ message: string }>(`/teams/${teamId}/meetings/${meetingId}`, {
+      headers: authHeaders(token),
+    }),
+
+  uploadMeetingAttachment: (token: string, teamId: string, file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return apiClient.upload<TaskAttachment>(
+      `/teams/${teamId}/meetings/attachments`,
+      formData,
+      { headers: authHeaders(token) },
+    );
+  },
+
+  listMeetingComments: (token: string, teamId: string, meetingId: string) =>
+    apiClient.get<MeetingComment[]>(`/teams/${teamId}/meetings/${meetingId}/comments`, {
+      cache: "no-store",
+      headers: authHeaders(token),
+    }),
+
+  createMeetingComment: (
+    token: string,
+    teamId: string,
+    meetingId: string,
+    payload: MeetingCommentCreate,
+  ) =>
+    apiClient.post<MeetingComment>(
+      `/teams/${teamId}/meetings/${meetingId}/comments`,
+      payload,
+      { headers: authHeaders(token) },
+    ),
+
+  removeMeetingComment: (
+    token: string,
+    teamId: string,
+    meetingId: string,
+    commentId: string,
+  ) =>
+    apiClient.delete<{ message: string }>(
+      `/teams/${teamId}/meetings/${meetingId}/comments/${commentId}`,
+      { headers: authHeaders(token) },
+    ),
 
   // --- Work log (hourly members only) ---
 

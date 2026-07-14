@@ -42,6 +42,7 @@ import type { Membership, MembershipUser } from "@/types/membership";
 import type { Team } from "@/types/team";
 
 import { TasksTab } from "./_components/tasks-tab";
+import { MeetingsTab } from "./_components/meetings-tab";
 import { WorkLogTab } from "./_components/work-log-tab";
 import {
   WorkArrangementDialog,
@@ -58,7 +59,7 @@ type TeamState =
  *  meaningful (and keeps working if the tab order ever changes). The "hours"
  *  tab only exists for a member working on this team on an hourly basis. */
 const BASE_TABS = ["overview", "members", "tasks"] as const;
-type TabKey = (typeof BASE_TABS)[number] | "hours";
+type TabKey = (typeof BASE_TABS)[number] | "hours" | "meetings";
 
 function TeamDetailPageContent() {
   const { id } = useParams<{ id: string }>();
@@ -72,9 +73,13 @@ function TeamDetailPageContent() {
   const [myMembership, setMyMembership] = useState<Membership | null | undefined>(undefined);
 
   const isHourlyMember = myMembership?.work.mode === "hourly";
-  const tabKeys: TabKey[] = isHourlyMember
-    ? [...BASE_TABS, "hours"]
-    : [...BASE_TABS];
+  // Anyone on the team can schedule and join a meeting, so the tab is for
+  // everyone — unlike "My Hours", which only exists for an hourly member.
+  const tabKeys: TabKey[] = [
+    ...BASE_TABS,
+    ...(isHourlyMember ? (["hours"] as const) : []),
+    "meetings",
+  ];
 
   // Unknown or missing `?tab=` falls back to Overview rather than rendering
   // an empty panel.
@@ -146,7 +151,7 @@ function TeamDetailPageContent() {
     <AppShell>
       {/* The hours tab is two columns (entries + calendar), so it needs more
           room than the single-column tabs. */}
-      <Stack spacing={3} sx={{ maxWidth: tab === "hours" ? 1100 : 720 }}>
+      <Stack spacing={3} sx={{ maxWidth: tab === "hours" || tab === "meetings" ? 1100 : 720 }}>
         <Stack spacing={1}>
           <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
             <Typography variant="h4" component="h1" sx={{ fontWeight: 700 }}>
@@ -169,6 +174,7 @@ function TeamDetailPageContent() {
           <Tab value="members" label="Members" />
           <Tab value="tasks" label="Tasks" />
           {isHourlyMember && <Tab value="hours" label="My Hours" />}
+          <Tab value="meetings" label="Meetings" />
         </Tabs>
 
         {tab === "overview" && (
@@ -190,6 +196,14 @@ function TeamDetailPageContent() {
         )}
         {tab === "tasks" && (
           <TasksTab
+            team={team}
+            token={token!}
+            currentUserId={user.id}
+            isSuperAdmin={user.is_super_admin}
+          />
+        )}
+        {tab === "meetings" && (
+          <MeetingsTab
             team={team}
             token={token!}
             currentUserId={user.id}
