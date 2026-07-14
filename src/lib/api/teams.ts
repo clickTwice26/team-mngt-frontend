@@ -5,6 +5,7 @@ import { apiClient } from "@/lib/api/client";
 import type { Membership } from "@/types/membership";
 import type { Page, Team, TeamCreate, TeamUpdate } from "@/types/team";
 import type { Task, TaskAttachment, TaskCreate, TaskUpdate } from "@/types/task";
+import type { TaskComment, TaskCommentCreate } from "@/types/task-comment";
 
 const authHeaders = (token: string) => ({ Authorization: `Bearer ${token}` });
 
@@ -80,4 +81,28 @@ export const teamsApi = {
       headers: authHeaders(token),
     });
   },
+
+  // --- Task discussion (submitter + assignees only) ---
+
+  listTaskComments: (token: string, teamId: string, taskId: string) =>
+    apiClient.get<TaskComment[]>(`/teams/${teamId}/tasks/${taskId}/comments`, {
+      cache: "no-store",
+      headers: authHeaders(token),
+    }),
+
+  createTaskComment: (
+    token: string,
+    teamId: string,
+    taskId: string,
+    payload: TaskCommentCreate,
+  ) =>
+    apiClient.post<TaskComment>(`/teams/${teamId}/tasks/${taskId}/comments`, payload, {
+      headers: authHeaders(token),
+    }),
+
+  removeTaskComment: (token: string, teamId: string, taskId: string, commentId: string) =>
+    apiClient.delete<{ message: string }>(
+      `/teams/${teamId}/tasks/${taskId}/comments/${commentId}`,
+      { headers: authHeaders(token) },
+    ),
 };

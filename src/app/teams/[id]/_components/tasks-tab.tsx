@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import NextLink from "next/link";
 import Alert from "@mui/material/Alert";
 import Autocomplete from "@mui/material/Autocomplete";
 import Avatar from "@mui/material/Avatar";
@@ -26,11 +27,11 @@ import Typography from "@mui/material/Typography";
 import AddIcon from "@mui/icons-material/Add";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
+import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutlineOutlined";
 import CloseIcon from "@mui/icons-material/Close";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import ImageIcon from "@mui/icons-material/Image";
-import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
 import MicIcon from "@mui/icons-material/Mic";
 import VideocamIcon from "@mui/icons-material/Videocam";
 import VisibilityIcon from "@mui/icons-material/Visibility";
@@ -38,6 +39,8 @@ import VisibilityIcon from "@mui/icons-material/Visibility";
 import { Markdown } from "@/components/markdown";
 import { ApiError } from "@/lib/api/client";
 import { teamsApi } from "@/lib/api/teams";
+
+import { AttachmentView } from "./attachment-view";
 import type { Membership, MembershipUser } from "@/types/membership";
 import type { Task, TaskAttachment, TaskPriority, TaskStatus } from "@/types/task";
 import type { Team } from "@/types/team";
@@ -93,60 +96,6 @@ function isOverdue(task: Task): boolean {
   return end.getTime() < Date.now();
 }
 
-/** Renders a single attachment inline: image thumbnail, audio/video player, or file link. */
-function AttachmentView({ attachment }: { attachment: TaskAttachment }) {
-  if (attachment.kind === "image") {
-    return (
-      <Link href={attachment.url} target="_blank" rel="noopener" sx={{ display: "inline-block" }}>
-        <Box
-          component="img"
-          src={attachment.url}
-          alt={attachment.filename}
-          sx={{
-            width: 120,
-            height: 120,
-            objectFit: "cover",
-            borderRadius: 1,
-            border: "1px solid",
-            borderColor: "divider",
-          }}
-        />
-      </Link>
-    );
-  }
-  if (attachment.kind === "audio") {
-    return (
-      <Box sx={{ minWidth: 260 }}>
-        <audio controls preload="metadata" style={{ width: "100%" }} src={attachment.url}>
-          <track kind="captions" />
-        </audio>
-      </Box>
-    );
-  }
-  if (attachment.kind === "video") {
-    return (
-      <Box
-        component="video"
-        controls
-        preload="metadata"
-        src={attachment.url}
-        sx={{ width: 260, maxHeight: 180, borderRadius: 1, bgcolor: "black" }}
-      />
-    );
-  }
-  return (
-    <Chip
-      icon={<InsertDriveFileIcon />}
-      label={attachment.filename}
-      component={Link}
-      href={attachment.url}
-      target="_blank"
-      rel="noopener"
-      clickable
-      variant="outlined"
-    />
-  );
-}
 
 export function TasksTab({
   team,
@@ -283,7 +232,13 @@ export function TasksTab({
         attachments,
       };
       if (editingTask) {
-        await teamsApi.updateTask(token, team.id, editingTask.id, { ...shared, status });
+        // Non-assignees may still edit the rest of the task, so send `status`
+        // only when they're allowed to set it — the server rejects it otherwise.
+        const canSetStatus = editingTask.assignees.some((a) => a.id === currentUserId);
+        await teamsApi.updateTask(token, team.id, editingTask.id, {
+          ...shared,
+          ...(canSetStatus ? { status } : {}),
+        });
       } else {
         await teamsApi.createTask(token, team.id, {
           ...shared,
@@ -356,6 +311,12 @@ export function TasksTab({
         <Stack spacing={1.5}>
           {state.tasks.map((task) => {
             const canDelete = isSuperAdmin || task.created_by.id === currentUserId;
+            // Status is the assignee's to report — mirrors the server rule, which
+            // rejects it for anyone else (see TaskService.update_task).
+            const canSetStatus = task.assignees.some((a) => a.id === currentUserId);
+            // The discussion is private to the submitter and the assignees, so
+            // only show the link to someone who'd actually be let in.
+            const isParticipant = canSetStatus || task.created_by.id === currentUserId;
             const overdue = isOverdue(task);
             return (
               <Paper key={task.id} variant="outlined" sx={{ p: 2 }}>
@@ -380,6 +341,18 @@ export function TasksTab({
                       />
                     </Stack>
                     <Stack direction="row" spacing={0.5}>
+                      {isParticipant && (
+                        <Tooltip title="Discussion">
+                          <IconButton
+                            size="small"
+                            component={NextLink}
+                            href={`/teams/${team.id}/tasks/${task.id}`}
+                            aria-label={`Discussion for ${task.title}`}
+                          >
+                            <ChatBubbleOutlineIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      )}
                       <IconButton
                         size="small"
                         aria-label={`Edit ${task.title}`}
@@ -435,6 +408,8 @@ export function TasksTab({
                       size="small"
                       label="Status"
                       value={task.status}
+                      disabled={!canSetStatus}
+                      helperText={canSetStatus ? undefined : "Only an assignee can change this"}
                       onChange={(e) =>
                         void handleQuickStatusChange(task, e.target.value as TaskStatus)
                       }
@@ -565,6 +540,12 @@ export function TasksTab({
                   select
                   label="Status"
                   value={status}
+                  disabled={!editingTask.assignees.some((a) => a.id === currentUserId)}
+                  helperText={
+                    editingTask.assignees.some((a) => a.id === currentUserId)
+                      ? undefined
+                      : "Only an assignee can change the status"
+                  }
                   onChange={(e) => setStatus(e.target.value as TaskStatus)}
                   fullWidth
                 >

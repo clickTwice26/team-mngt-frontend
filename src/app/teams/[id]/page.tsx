@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Alert from "@mui/material/Alert";
 import Autocomplete from "@mui/material/Autocomplete";
 import Avatar from "@mui/material/Avatar";
@@ -44,13 +44,38 @@ type TeamState =
   | { kind: "ok"; team: Team }
   | { kind: "error"; message: string };
 
-export default function TeamDetailPage() {
+/** Tabs are addressed by name rather than index, so `?tab=members` stays
+ *  meaningful (and keeps working if the tab order ever changes). */
+const TABS = ["overview", "members", "tasks"] as const;
+type TabKey = (typeof TABS)[number];
+
+function isTabKey(value: string | null): value is TabKey {
+  return value !== null && TABS.includes(value as TabKey);
+}
+
+function TeamDetailPageContent() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, token, loading: authLoading, isAuthenticated } = useAuth();
 
   const [teamState, setTeamState] = useState<TeamState>({ kind: "loading" });
-  const [tab, setTab] = useState(0);
+
+  // Unknown or missing `?tab=` falls back to Overview rather than rendering
+  // an empty panel.
+  const tabParam = searchParams.get("tab");
+  const tab: TabKey = isTabKey(tabParam) ? tabParam : "overview";
+
+  const selectTab = (next: TabKey) => {
+    const params = new URLSearchParams(searchParams.toString());
+    // Overview is the default, so keep its URL clean.
+    if (next === "overview") params.delete("tab");
+    else params.set("tab", next);
+    const query = params.toString();
+    // `replace`, not `push`: tab switches shouldn't each add a history entry
+    // that Back has to walk through to leave the page.
+    router.replace(query ? `/teams/${id}?${query}` : `/teams/${id}`, { scroll: false });
+  };
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) router.replace("/login");
@@ -110,23 +135,23 @@ export default function TeamDetailPage() {
           )}
         </Stack>
 
-        <Tabs value={tab} onChange={(_, value) => setTab(value)}>
-          <Tab label="Overview" />
-          <Tab label="Members" />
-          <Tab label="Tasks" />
+        <Tabs value={tab} onChange={(_, value: TabKey) => selectTab(value)}>
+          <Tab value="overview" label="Overview" />
+          <Tab value="members" label="Members" />
+          <Tab value="tasks" label="Tasks" />
         </Tabs>
 
-        {tab === 0 && (
+        {tab === "overview" && (
           <TeamOverviewTab
             team={team}
             token={token!}
             onSaved={(updated) => setTeamState({ kind: "ok", team: updated })}
           />
         )}
-        {tab === 1 && (
+        {tab === "members" && (
           <TeamMembersTab team={team} token={token!} canManage={user.is_super_admin} />
         )}
-        {tab === 2 && (
+        {tab === "tasks" && (
           <TasksTab
             team={team}
             token={token!}
@@ -136,6 +161,27 @@ export default function TeamDetailPage() {
         )}
       </Stack>
     </AppShell>
+  );
+}
+
+function TeamDetailPageFallback() {
+  return (
+    <AppShell>
+      <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
+        <CircularProgress size={20} />
+        <Typography color="text.secondary">Loading…</Typography>
+      </Stack>
+    </AppShell>
+  );
+}
+
+// `useSearchParams` needs a Suspense boundary above it — same shape as the
+// teams list page.
+export default function TeamDetailPage() {
+  return (
+    <Suspense fallback={<TeamDetailPageFallback />}>
+      <TeamDetailPageContent />
+    </Suspense>
   );
 }
 
