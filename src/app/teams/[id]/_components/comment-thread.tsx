@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Alert from "@mui/material/Alert";
 import Avatar from "@mui/material/Avatar";
 import Box from "@mui/material/Box";
@@ -19,7 +19,9 @@ import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import AddReactionIcon from "@mui/icons-material/AddReactionOutlined";
+import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import DeleteIcon from "@mui/icons-material/Delete";
+import HourglassIcon from "@mui/icons-material/HourglassBottom";
 import SendIcon from "@mui/icons-material/Send";
 
 import { AttachmentPicker } from "@/components/attachment-picker";
@@ -65,6 +67,15 @@ export interface ThreadActions {
   react?: (commentId: string, emoji: string, add: boolean) => Promise<unknown>;
 }
 
+/** Seconds the server says to wait, from a 429. Null for any other failure. */
+function retryAfterSeconds(err: ApiError): number | null {
+  if (err.status !== 429) return null;
+  const detail = err.detail as { retry_after?: unknown } | undefined;
+  // Fall back to a sane guess if the body ever lacks the field — a countdown
+  // that's roughly right beats a disabled button with no explanation.
+  return typeof detail?.retry_after === "number" ? detail.retry_after : 15;
+}
+
 function formatTimestamp(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
     month: "short",
@@ -108,11 +119,20 @@ function useDeleteWindow(deletableUntil: string): { open: boolean; secondsLeft: 
   return { open: remaining > 0, secondsLeft: Math.max(0, Math.ceil(remaining / 1000)) };
 }
 
+/** How close to the bottom still counts as "reading the latest", in pixels. */
+const PINNED_SLACK = 120;
+
 /**
  * A whole discussion: the existing comments plus a composer.
  *
- * Shared by the task discussion and the work log discussion — they differ only
- * in which endpoints `actions` calls, not in how a thread behaves.
+ * Shared by the task discussion, the work log discussion and the team's own —
+ * they differ only in which endpoints `actions` calls, not in how a thread
+ * behaves.
+ *
+ * Two layouts. `page` lets the thread grow down the page, which is right for a
+ * handful of comments hanging off a task. `chat` is a fixed-height panel that
+ * scrolls internally, which is what a room with hundreds of messages needs — the
+ * composer has to stay put instead of being pushed a screen and a half down.
  */
 export function CommentThreadList({
   comments,
@@ -122,6 +142,7 @@ export function CommentThreadList({
   placeholder = "Write a message…",
   submitOnEnter = false,
   reactionChoices,
+  variant = "page",
 }: {
   comments: ThreadComment[];
   currentUserId: string;
@@ -134,11 +155,16 @@ export function CommentThreadList({
   submitOnEnter?: boolean;
   /** The emoji offered on each message. Omit to hide reactions entirely. */
   reactionChoices?: readonly string[];
+  variant?: "page" | "chat";
 }) {
-  return (
+  const messages = (
     <>
       {comments.length === 0 && (
-        <Paper variant="outlined" sx={{ p: 4, textAlign: "center" }}>
+        <Paper
+          variant={variant === "chat" ? "elevation" : "outlined"}
+          elevation={0}
+          sx={{ p: 4, textAlign: "center" }}
+        >
           <Typography color="text.secondary">{emptyText}</Typography>
         </Paper>
       )}
@@ -151,17 +177,122 @@ export function CommentThreadList({
           actions={actions}
           submitOnEnter={submitOnEnter}
           reactionChoices={reactionChoices}
+          variant={variant}
         />
       ))}
-
-      <Paper variant="outlined" sx={{ p: 2 }}>
-        <CommentComposer
-          actions={actions}
-          placeholder={placeholder}
-          submitOnEnter={submitOnEnter}
-        />
-      </Paper>
     </>
+  );
+
+  const composer = (
+    <CommentComposer
+      actions={actions}
+      placeholder={placeholder}
+      submitOnEnter={submitOnEnter}
+    />
+  );
+
+  if (variant === "page") {
+    return (
+      <>
+        {messages}
+        <Paper variant="outlined" sx={{ p: 2 }}>
+          {composer}
+        </Paper>
+      </>
+    );
+  }
+
+  return (
+    <ChatPanel composer={composer} comments={comments}>
+      {messages}
+    </ChatPanel>
+  );
+}
+
+/** The scrolling half of the chat layout, plus the composer welded beneath it. */
+function ChatPanel({
+  comments,
+  children,
+  composer,
+}: {
+  comments: ThreadComment[];
+  children: React.ReactNode;
+  composer: React.ReactNode;
+}) {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  // Whether the reader is at the live end of the thread. Kept in a ref as well
+  // as state because the scroll effect below has to read it *after* the new
+  // message is in the DOM, without waiting for a re-render.
+  const pinned = useRef(true);
+  const [atLatest, setAtLatest] = useState(true);
+
+  const scrollToLatest = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  };
+
+  const handleScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const isPinned = el.scrollHeight - el.scrollTop - el.clientHeight < PINNED_SLACK;
+    pinned.current = isPinned;
+    setAtLatest((was) => (was === isPinned ? was : isPinned));
+  };
+
+  // Follow the conversation, but only when the reader is already at the bottom.
+  // Yanking someone back to the newest message while they're reading up the
+  // thread is the single most annoying thing a chat window can do.
+  useLayoutEffect(() => {
+    if (pinned.current) scrollToLatest();
+  }, [comments]);
+
+  return (
+    <Paper
+      variant="outlined"
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        // Tall enough to feel like a room, short enough that the composer is
+        // always on screen without the page itself scrolling.
+        height: "clamp(360px, 68vh, 760px)",
+        overflow: "hidden",
+      }}
+    >
+      {/* The button anchors to the scrolling area, not the panel — otherwise its
+          offset would have to guess the composer's height, which changes as soon
+          as someone attaches a file. `minHeight: 0` is what actually lets a flex
+          child scroll instead of growing to fit its content. */}
+      <Box sx={{ position: "relative", flexGrow: 1, minHeight: 0, display: "flex" }}>
+        <Box
+          ref={scrollRef}
+          onScroll={handleScroll}
+          sx={{ flexGrow: 1, overflowY: "auto", p: 2 }}
+        >
+          <Stack spacing={1}>{children}</Stack>
+        </Box>
+
+        {!atLatest && (
+          <Button
+            size="small"
+            variant="contained"
+            startIcon={<ArrowDownwardIcon />}
+            onClick={scrollToLatest}
+            sx={{
+              position: "absolute",
+              bottom: 8,
+              left: "50%",
+              transform: "translateX(-50%)",
+              borderRadius: 5,
+            }}
+          >
+            Latest
+          </Button>
+        )}
+      </Box>
+
+      <Box sx={{ p: 1.5, borderTop: "1px solid", borderColor: "divider" }}>{composer}</Box>
+    </Paper>
   );
 }
 
@@ -173,17 +304,26 @@ function CommentThread({
   actions,
   submitOnEnter,
   reactionChoices,
+  variant,
 }: {
   comment: ThreadComment;
   currentUserId: string;
   actions: ThreadActions;
   submitOnEnter: boolean;
   reactionChoices?: readonly string[];
+  variant: "page" | "chat";
 }) {
   const [replying, setReplying] = useState(false);
+  const chat = variant === "chat";
 
   return (
-    <Paper variant="outlined" sx={{ p: 2 }}>
+    // In a chat the messages *are* the list, so a border and a drop of padding
+    // around each one just adds noise and eats the height they're competing for.
+    <Paper
+      variant={chat ? "elevation" : "outlined"}
+      elevation={0}
+      sx={chat ? { px: 1, py: 0.5, bgcolor: "transparent" } : { p: 2 }}
+    >
       <Stack spacing={1.5}>
         <CommentBody
           comment={comment}
@@ -490,9 +630,20 @@ function CommentComposer({
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Seconds left on the server's rate limit. Ticks down and re-enables Send on
+  // its own, so the composer never sits in a dead state you have to guess your
+  // way out of.
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const id = setTimeout(() => setCooldown((left) => left - 1), 1000);
+    return () => clearTimeout(id);
+  }, [cooldown]);
 
   // Mirrors the server rule: a message needs text, an attachment, or both.
-  const canSubmit = (body.trim().length > 0 || attachments.length > 0) && !uploading;
+  const canSubmit =
+    (body.trim().length > 0 || attachments.length > 0) && !uploading && cooldown === 0;
 
   const submit = async () => {
     if (!canSubmit || submitting) return;
@@ -509,7 +660,14 @@ function CommentComposer({
       onPosted?.();
       await actions.reload();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to post the message.");
+      const wait = err instanceof ApiError ? retryAfterSeconds(err) : null;
+      if (wait !== null) {
+        // Rate-limited. The countdown below says everything the error would, and
+        // keeps saying it as the clock runs — so no error line as well.
+        setCooldown(wait);
+      } else {
+        setError(err instanceof ApiError ? err.message : "Failed to post the message.");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -538,6 +696,13 @@ function CommentComposer({
       }}
     >
       {error && <Alert severity="error">{error}</Alert>}
+
+      {cooldown > 0 && (
+        <Alert severity="warning" icon={<HourglassIcon fontSize="inherit" />}>
+          You&apos;re posting too quickly — you can send again in{" "}
+          <strong>{cooldown}s</strong>. Your message is still here.
+        </Alert>
+      )}
 
       <TextField
         multiline
@@ -576,7 +741,7 @@ function CommentComposer({
           endIcon={<SendIcon />}
           disabled={!canSubmit || submitting}
         >
-          {submitting ? "Sending…" : "Send"}
+          {submitting ? "Sending…" : cooldown > 0 ? `Wait ${cooldown}s` : "Send"}
         </Button>
       </Stack>
     </Stack>

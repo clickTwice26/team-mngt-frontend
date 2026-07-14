@@ -203,6 +203,9 @@ export function DiscussionTab({
           // task and work-log threads keep the plain-textarea behaviour.
           submitOnEnter
           reactionChoices={REACTION_CHOICES}
+          // A room, not a page: the history scrolls inside the panel and the
+          // composer stays put, however many messages pile up.
+          variant="chat"
         />
       )}
     </Stack>
