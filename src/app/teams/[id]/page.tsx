@@ -40,6 +40,7 @@ import type { Membership, MembershipUser } from "@/types/membership";
 import type { Team } from "@/types/team";
 
 import { TasksTab } from "./_components/tasks-tab";
+import { WorkLogTab } from "./_components/work-log-tab";
 import {
   WorkArrangementDialog,
   WorkChip,
@@ -52,13 +53,10 @@ type TeamState =
   | { kind: "error"; message: string };
 
 /** Tabs are addressed by name rather than index, so `?tab=members` stays
- *  meaningful (and keeps working if the tab order ever changes). */
-const TABS = ["overview", "members", "tasks"] as const;
-type TabKey = (typeof TABS)[number];
-
-function isTabKey(value: string | null): value is TabKey {
-  return value !== null && TABS.includes(value as TabKey);
-}
+ *  meaningful (and keeps working if the tab order ever changes). The "hours"
+ *  tab only exists for a member working on this team on an hourly basis. */
+const BASE_TABS = ["overview", "members", "tasks"] as const;
+type TabKey = (typeof BASE_TABS)[number] | "hours";
 
 function TeamDetailPageContent() {
   const { id } = useParams<{ id: string }>();
@@ -67,11 +65,21 @@ function TeamDetailPageContent() {
   const { user, token, loading: authLoading, isAuthenticated } = useAuth();
 
   const [teamState, setTeamState] = useState<TeamState>({ kind: "loading" });
+  // The current user's own membership, used to decide whether they log hours
+  // here. `undefined` while unknown; `null` if they aren't a member.
+  const [myMembership, setMyMembership] = useState<Membership | null | undefined>(undefined);
+
+  const isHourlyMember = myMembership?.work.mode === "hourly";
+  const tabKeys: TabKey[] = isHourlyMember
+    ? [...BASE_TABS, "hours"]
+    : [...BASE_TABS];
 
   // Unknown or missing `?tab=` falls back to Overview rather than rendering
   // an empty panel.
   const tabParam = searchParams.get("tab");
-  const tab: TabKey = isTabKey(tabParam) ? tabParam : "overview";
+  const tab: TabKey = tabKeys.includes(tabParam as TabKey)
+    ? (tabParam as TabKey)
+    : "overview";
 
   const selectTab = (next: TabKey) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -100,6 +108,16 @@ function TeamDetailPageContent() {
         }),
       );
   }, [token, id]);
+
+  useEffect(() => {
+    if (!token || !user) return;
+    // Find our own membership to know whether to offer the hours tab. Any team
+    // member can list members, so this is safe for everyone.
+    teamsApi
+      .listMembers(token, id)
+      .then((members) => setMyMembership(members.find((m) => m.user.id === user.id) ?? null))
+      .catch(() => setMyMembership(null));
+  }, [token, id, user]);
 
   if (authLoading || !user || teamState.kind === "loading") {
     return (
@@ -146,6 +164,7 @@ function TeamDetailPageContent() {
           <Tab value="overview" label="Overview" />
           <Tab value="members" label="Members" />
           <Tab value="tasks" label="Tasks" />
+          {isHourlyMember && <Tab value="hours" label="My Hours" />}
         </Tabs>
 
         {tab === "overview" && (
@@ -172,6 +191,9 @@ function TeamDetailPageContent() {
             currentUserId={user.id}
             isSuperAdmin={user.is_super_admin}
           />
+        )}
+        {tab === "hours" && isHourlyMember && (
+          <WorkLogTab team={team} token={token!} currentUserId={user.id} />
         )}
       </Stack>
     </AppShell>

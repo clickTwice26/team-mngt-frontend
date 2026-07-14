@@ -6,6 +6,7 @@ import type { Membership, WorkArrangement } from "@/types/membership";
 import type { Page, Team, TeamCreate, TeamUpdate } from "@/types/team";
 import type { Task, TaskAttachment, TaskCreate, TaskUpdate } from "@/types/task";
 import type { TaskComment, TaskCommentCreate } from "@/types/task-comment";
+import type { WorkLogCreate, WorkLogEntry, WorkLogUpdate } from "@/types/work-log";
 
 const authHeaders = (token: string) => ({ Authorization: `Bearer ${token}` });
 
@@ -92,6 +93,31 @@ export const teamsApi = {
       headers: authHeaders(token),
     });
   },
+
+  // --- Work log (hourly members only) ---
+
+  listWorkLogs: (token: string, teamId: string, userId?: string) => {
+    const suffix = userId ? `?user_id=${encodeURIComponent(userId)}` : "";
+    return apiClient.get<WorkLogEntry[]>(`/teams/${teamId}/work-logs${suffix}`, {
+      cache: "no-store",
+      headers: authHeaders(token),
+    });
+  },
+
+  createWorkLog: (token: string, teamId: string, payload: WorkLogCreate) =>
+    apiClient.post<WorkLogEntry>(`/teams/${teamId}/work-logs`, payload, {
+      headers: authHeaders(token),
+    }),
+
+  updateWorkLog: (token: string, teamId: string, entryId: string, payload: WorkLogUpdate) =>
+    apiClient.patch<WorkLogEntry>(`/teams/${teamId}/work-logs/${entryId}`, payload, {
+      headers: authHeaders(token),
+    }),
+
+  removeWorkLog: (token: string, teamId: string, entryId: string) =>
+    apiClient.delete<{ message: string }>(`/teams/${teamId}/work-logs/${entryId}`, {
+      headers: authHeaders(token),
+    }),
 
   // --- Task discussion (submitter + assignees only) ---
 

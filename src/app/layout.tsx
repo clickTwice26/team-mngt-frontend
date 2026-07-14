@@ -3,6 +3,7 @@ import { AppRouterCacheProvider } from "@mui/material-nextjs/v16-appRouter";
 import { ThemeProvider } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
 
+import { DateLocalizationProvider } from "@/components/date-localization-provider";
 import { AuthProvider } from "@/context/auth-context";
 import theme, { googleSans } from "@/theme";
 
@@ -23,7 +24,11 @@ export default function RootLayout({
           <ThemeProvider theme={theme}>
             {/* CssBaseline applies Material Design's baseline + resets. */}
             <CssBaseline />
-            <AuthProvider>{children}</AuthProvider>
+            {/* App-wide date adapter, so any date/time picker just works —
+                no per-usage setup. */}
+            <DateLocalizationProvider>
+              <AuthProvider>{children}</AuthProvider>
+            </DateLocalizationProvider>
           </ThemeProvider>
         </AppRouterCacheProvider>
       </body>
