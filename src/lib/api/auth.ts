@@ -1,7 +1,13 @@
 /** Typed API functions for authentication. */
 
 import { apiClient } from "@/lib/api/client";
-import type { AuthToken, LoginPayload, RegisterPayload, User } from "@/types/auth";
+import type {
+  AuthToken,
+  LoginPayload,
+  RegisterPayload,
+  Session,
+  User,
+} from "@/types/auth";
 
 export const authApi = {
   register: (payload: RegisterPayload) =>
@@ -16,6 +22,33 @@ export const authApi = {
   me: (token: string) =>
     apiClient.get<User>("/auth/me", {
       cache: "no-store",
+      headers: { Authorization: `Bearer ${token}` },
+    }),
+
+  /**
+   * The user *and* any impersonation in flight. Hydration uses this rather than
+   * `me`, so reloading mid-impersonation comes back still impersonating instead
+   * of quietly looking like an ordinary session.
+   */
+  session: (token: string) =>
+    apiClient.get<Session>("/auth/session", {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${token}` },
+    }),
+
+  /** Start acting as `userId`. Platform developers only; 10-minute token. */
+  impersonate: (token: string, userId: string) =>
+    apiClient.post<AuthToken>(`/auth/impersonate/${userId}`, undefined, {
+      headers: { Authorization: `Bearer ${token}` },
+    }),
+
+  /**
+   * End the session and get the developer's own account back. The actor's
+   * original token is never kept client-side — the backend mints a fresh one
+   * from the impersonation token's actor claim.
+   */
+  stopImpersonation: (token: string) =>
+    apiClient.post<AuthToken>("/auth/impersonate/stop", undefined, {
       headers: { Authorization: `Bearer ${token}` },
     }),
 

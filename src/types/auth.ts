@@ -24,11 +24,47 @@ export interface AdminUserUpdate {
   is_active?: boolean;
 }
 
+/**
+ * Who is *really* behind the current session. Non-null only while a platform
+ * developer is acting as someone else: `user` is then the person being acted
+ * as, and this is the developer responsible for it.
+ */
+export interface ImpersonationContext {
+  actor_id: string;
+  actor_email: string;
+  actor_name: string | null;
+  session_id: string;
+  /** ISO timestamp. The session is dead after this, server-side. */
+  expires_at: string;
+}
+
 export interface AuthToken {
   access_token: string;
   token_type: string;
   expires_in: number;
   user: User;
+  impersonation: ImpersonationContext | null;
+}
+
+/** `GET /auth/session` — the user plus any impersonation in flight. */
+export interface Session {
+  user: User;
+  impersonation: ImpersonationContext | null;
+}
+
+/** One row of the impersonation trail (`GET /auth/impersonations`). */
+export interface ImpersonationRecord {
+  id: string;
+  actor_id: string;
+  actor_email: string;
+  target_id: string;
+  target_email: string;
+  started_at: string;
+  expires_at: string;
+  ended_at: string | null;
+  ended_reason: string | null;
+  ip_address: string | null;
+  user_agent: string | null;
 }
 
 export interface RegisterPayload {

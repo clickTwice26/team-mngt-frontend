@@ -59,6 +59,12 @@ interface Props {
   collapsed: boolean;
   mobileOpen: boolean;
   onMobileClose: () => void;
+  /**
+   * Pixels to drop the permanent drawer by, to sit under the impersonation
+   * banner. 0 normally. The temporary (mobile) drawer ignores this — it's a
+   * full-height modal overlay, and it's dismissed rather than lived in.
+   */
+  offsetTop?: number;
 }
 
 /**
@@ -68,7 +74,7 @@ interface Props {
  * icon-only rail and expands to full width (toggled from the header's menu
  * button). Mobile: a temporary overlay drawer toggled the same way.
  */
-export function Sidebar({ collapsed, mobileOpen, onMobileClose }: Props) {
+export function Sidebar({ collapsed, mobileOpen, onMobileClose, offsetTop = 0 }: Props) {
   const theme = useTheme();
   const isDesktop = useMediaQuery(theme.breakpoints.up("sm"));
   const pathname = usePathname();
@@ -156,6 +162,10 @@ export function Sidebar({ collapsed, mobileOpen, onMobileClose }: Props) {
           width,
           overflowX: "hidden",
           boxSizing: "border-box",
+          // The drawer paper is fixed to the viewport, so it has to be dropped
+          // and shortened by hand to make room for the impersonation banner.
+          top: `${offsetTop}px`,
+          height: `calc(100% - ${offsetTop}px)`,
           transition: theme.transitions.create("width", {
             easing: theme.transitions.easing.sharp,
             duration: theme.transitions.duration.enteringScreen,

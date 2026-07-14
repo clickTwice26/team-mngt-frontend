@@ -28,6 +28,7 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
+import LoginIcon from "@mui/icons-material/Login";
 
 import { AppShell } from "@/components/layout/app-shell";
 import { useAuth } from "@/context/auth-context";
@@ -46,12 +47,35 @@ const ROLE_LABELS: Record<PlatformRole, string> = {
   platform_developer: "Platform Developer",
 };
 
+/**
+ * Why a given account can't be impersonated, or null if it can. Mirrors the
+ * rules the backend enforces in `ImpersonationService.start` — this only decides
+ * what to disable and what tooltip to show; the server is the authority.
+ */
+function impersonationBlockedReason(target: User, self: User): string | null {
+  if (target.id === self.id) return "You are already signed in as yourself";
+  if (target.role === "platform_developer")
+    return "Platform developers cannot be impersonated";
+  if (!target.is_active) return "This account is disabled";
+  return null;
+}
+
 export default function UsersPage() {
   const router = useRouter();
-  const { user, token, loading: authLoading, isAuthenticated } = useAuth();
+  const {
+    user,
+    token,
+    loading: authLoading,
+    isAuthenticated,
+    startImpersonation,
+  } = useAuth();
 
   const [state, setState] = useState<State>({ kind: "loading" });
   const [search, setSearch] = useState("");
+
+  const [impersonateTarget, setImpersonateTarget] = useState<User | null>(null);
+  const [impersonating, setImpersonating] = useState(false);
+  const [impersonateError, setImpersonateError] = useState<string | null>(null);
 
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [fullName, setFullName] = useState("");
@@ -133,6 +157,24 @@ export default function UsersPage() {
     }
   };
 
+  const handleImpersonate = async () => {
+    if (!impersonateTarget) return;
+    setImpersonateError(null);
+    setImpersonating(true);
+    try {
+      await startImpersonation(impersonateTarget.id);
+      setImpersonateTarget(null);
+      // Land on the dashboard: /users is developer-only, so staying here would
+      // just render "access required" as the person we're now acting as.
+      router.push("/dashboard");
+    } catch (err) {
+      setImpersonateError(
+        err instanceof ApiError ? err.message : "Failed to start impersonation.",
+      );
+      setImpersonating(false);
+    }
+  };
+
   const handleDelete = async () => {
     if (!token || !deleteTarget) return;
     setDeleteError(null);
@@ -204,6 +246,7 @@ export default function UsersPage() {
               <TableBody>
                 {state.users.map((target) => {
                   const isSelf = target.id === user.id;
+                  const blockedReason = impersonationBlockedReason(target, user);
                   return (
                     <TableRow key={target.id} hover>
                       <TableCell>{target.full_name || "—"}</TableCell>
@@ -229,6 +272,23 @@ export default function UsersPage() {
                         </Typography>
                       </TableCell>
                       <TableCell align="right">
+                        <Tooltip
+                          title={blockedReason ?? `Sign in as ${target.email}`}
+                        >
+                          <span>
+                            <IconButton
+                              aria-label={`Impersonate ${target.email}`}
+                              size="small"
+                              disabled={blockedReason !== null}
+                              onClick={() => {
+                                setImpersonateError(null);
+                                setImpersonateTarget(target);
+                              }}
+                            >
+                              <LoginIcon fontSize="small" />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
                         <IconButton
                           aria-label={`Edit ${target.email}`}
                           size="small"
@@ -303,6 +363,43 @@ export default function UsersPage() {
             </Button>
           </DialogActions>
         </Box>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(impersonateTarget)}
+        onClose={() => (impersonating ? undefined : setImpersonateTarget(null))}
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle>Sign in as this user</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2}>
+            {impersonateError && <Alert severity="error">{impersonateError}</Alert>}
+            <DialogContentText>
+              You&apos;ll use TeamUp as{" "}
+              <strong>{impersonateTarget?.full_name || impersonateTarget?.email}</strong>{" "}
+              for <strong>10 minutes</strong>, and anything you do will be recorded
+              against your own account. You can leave at any time from the banner at
+              the top of the page.
+            </DialogContentText>
+            <Alert severity="info">
+              You won&apos;t be able to change their password or picture while signed
+              in as them.
+            </Alert>
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button disabled={impersonating} onClick={() => setImpersonateTarget(null)}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            disabled={impersonating}
+            onClick={() => void handleImpersonate()}
+          >
+            {impersonating ? "Signing in…" : "Sign in as user"}
+          </Button>
+        </DialogActions>
       </Dialog>
 
       <Dialog open={Boolean(deleteTarget)} onClose={() => setDeleteTarget(null)} fullWidth maxWidth="xs">

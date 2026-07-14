@@ -11,12 +11,17 @@ import { AuthNav } from "@/components/auth-nav";
 
 interface Props {
   onMenuClick: () => void;
+  /** Pixels to drop the bar by, to sit under the impersonation banner. 0 normally. */
+  offsetTop?: number;
 }
 
 /** Fixed top bar shared by every page inside the app shell. */
-export function AppHeader({ onMenuClick }: Props) {
+export function AppHeader({ onMenuClick, offsetTop = 0 }: Props) {
   return (
-    <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
+    <AppBar
+      position="fixed"
+      sx={{ top: `${offsetTop}px`, zIndex: (theme) => theme.zIndex.drawer + 1 }}
+    >
       <Toolbar>
         <IconButton
           color="inherit"
