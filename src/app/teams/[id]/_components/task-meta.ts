@@ -31,19 +31,25 @@ export const PRIORITY_COLORS: Record<TaskPriority, "default" | "info" | "warning
   urgent: "error",
 };
 
+/** A deadline is an instant now, so show the time alongside the date. */
 export function formatDeadline(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
+  return new Date(iso).toLocaleString(undefined, {
     year: "numeric",
     month: "short",
     day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
   });
 }
 
-/** A deadline counts as missed only once its whole day has passed — and never
- *  for a task that's already done. */
+/**
+ * Overdue once the deadline instant has passed — and never for a done task.
+ *
+ * This used to stretch the deadline to 23:59 of its day, because a deadline was
+ * only ever a date. Now that it carries a time, honouring it literally is the
+ * whole point: "due at 2pm" means overdue at 2:01pm, not at midnight.
+ */
 export function isOverdue(task: Task): boolean {
   if (!task.deadline || task.status === "done") return false;
-  const end = new Date(task.deadline);
-  end.setHours(23, 59, 59, 999);
-  return end.getTime() < Date.now();
+  return new Date(task.deadline).getTime() < Date.now();
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import NextLink from "next/link";
 import Alert from "@mui/material/Alert";
 import Autocomplete from "@mui/material/Autocomplete";
@@ -15,7 +15,6 @@ import DialogContent from "@mui/material/DialogContent";
 import DialogContentText from "@mui/material/DialogContentText";
 import DialogTitle from "@mui/material/DialogTitle";
 import IconButton from "@mui/material/IconButton";
-import Link from "@mui/material/Link";
 import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
@@ -25,17 +24,15 @@ import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import AddIcon from "@mui/icons-material/Add";
-import AttachFileIcon from "@mui/icons-material/AttachFile";
 import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
 import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutlineOutlined";
-import CloseIcon from "@mui/icons-material/Close";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
-import ImageIcon from "@mui/icons-material/Image";
-import MicIcon from "@mui/icons-material/Mic";
-import VideocamIcon from "@mui/icons-material/Videocam";
-import VisibilityIcon from "@mui/icons-material/Visibility";
 
+import { DateTimePicker } from "@mui/x-date-pickers/DateTimePicker";
+import dayjs, { Dayjs } from "dayjs";
+
+import { AttachmentPicker } from "@/components/attachment-picker";
 import { Markdown } from "@/components/markdown";
 import { ApiError } from "@/lib/api/client";
 import { teamsApi } from "@/lib/api/teams";
@@ -53,15 +50,6 @@ import type { Membership, MembershipUser } from "@/types/membership";
 import type { Task, TaskAttachment, TaskPriority, TaskStatus } from "@/types/task";
 import type { Team } from "@/types/team";
 
-const IMAGE_ACCEPT = "image/jpeg,image/png,image/webp,image/gif";
-const AUDIO_ACCEPT = "audio/mpeg,audio/mp4,audio/x-m4a,audio/aac,audio/wav,audio/webm,audio/ogg";
-const VIDEO_ACCEPT = "video/mp4,video/webm,video/quicktime,video/ogg";
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 
 export function TasksTab({
@@ -90,22 +78,16 @@ export function TasksTab({
   const [descMode, setDescMode] = useState<"write" | "preview">("write");
   const [priority, setPriority] = useState<TaskPriority>("medium");
   const [status, setStatus] = useState<TaskStatus>("todo");
-  const [deadline, setDeadline] = useState(""); // yyyy-mm-dd or ""
+  const [deadline, setDeadline] = useState<Dayjs | null>(null);
   const [assignees, setAssignees] = useState<MembershipUser[]>([]);
   const [attachments, setAttachments] = useState<TaskAttachment[]>([]);
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const imageInputRef = useRef<HTMLInputElement>(null);
-  const audioInputRef = useRef<HTMLInputElement>(null);
-  const videoInputRef = useRef<HTMLInputElement>(null);
-
   const [deleteTarget, setDeleteTarget] = useState<Task | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-
-  const [previewAttachment, setPreviewAttachment] = useState<TaskAttachment | null>(null);
 
   const load = () => {
     setState({ kind: "loading" });
@@ -137,7 +119,7 @@ export function TasksTab({
     setDescMode("write");
     setPriority("medium");
     setStatus("todo");
-    setDeadline("");
+    setDeadline(null);
     setAssignees([]);
     setAttachments([]);
     setFormError(null);
@@ -156,33 +138,11 @@ export function TasksTab({
     setDescMode("write");
     setPriority(task.priority);
     setStatus(task.status);
-    setDeadline(task.deadline ? task.deadline.slice(0, 10) : "");
+    setDeadline(task.deadline ? dayjs(task.deadline) : null);
     setAssignees(task.assignees);
     setAttachments(task.attachments);
     setFormError(null);
     setDialogOpen(true);
-  };
-
-  const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files ?? []);
-    event.target.value = ""; // allow re-picking the same file
-    if (files.length === 0) return;
-    setFormError(null);
-    setUploading(true);
-    try {
-      for (const file of files) {
-        const uploaded = await teamsApi.uploadTaskAttachment(token, team.id, file);
-        setAttachments((prev) => [...prev, uploaded]);
-      }
-    } catch (err) {
-      setFormError(err instanceof ApiError ? err.message : "Failed to upload file.");
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const removeAttachment = (url: string) => {
-    setAttachments((prev) => prev.filter((a) => a.url !== url));
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -194,7 +154,8 @@ export function TasksTab({
         title,
         description: description.trim() || null,
         priority,
-        deadline: deadline ? deadline : null,
+        // The picker works in local time; the API stores the UTC instant.
+        deadline: deadline && deadline.isValid() ? deadline.toISOString() : null,
         assignee_ids: assignees.map((a) => a.id),
         attachments,
       };
@@ -493,13 +454,17 @@ export function TasksTab({
                   <MenuItem value="high">High</MenuItem>
                   <MenuItem value="urgent">Urgent</MenuItem>
                 </TextField>
-                <TextField
-                  type="date"
+                <DateTimePicker
                   label="Deadline"
                   value={deadline}
-                  onChange={(e) => setDeadline(e.target.value)}
-                  fullWidth
-                  slotProps={{ inputLabel: { shrink: true } }}
+                  onChange={setDeadline}
+                  ampm
+                  slotProps={{
+                    textField: { fullWidth: true },
+                    // Without this there's no way back to "no deadline" once
+                    // one is set.
+                    field: { clearable: true, onClear: () => setDeadline(null) },
+                  }}
                 />
               </Stack>
               {editingTask && (
@@ -533,123 +498,13 @@ export function TasksTab({
                 )}
               />
 
-              <Box>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                  Attachments
-                </Typography>
-                <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1 }}>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={<ImageIcon />}
-                    disabled={uploading}
-                    onClick={() => imageInputRef.current?.click()}
-                  >
-                    Image
-                  </Button>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={<MicIcon />}
-                    disabled={uploading}
-                    onClick={() => audioInputRef.current?.click()}
-                  >
-                    Voice
-                  </Button>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={<VideocamIcon />}
-                    disabled={uploading}
-                    onClick={() => videoInputRef.current?.click()}
-                  >
-                    Video
-                  </Button>
-                  {uploading && (
-                    <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-                      <CircularProgress size={18} />
-                      <Typography variant="caption" color="text.secondary">
-                        Uploading…
-                      </Typography>
-                    </Stack>
-                  )}
-                </Stack>
-                <input
-                  ref={imageInputRef}
-                  type="file"
-                  accept={IMAGE_ACCEPT}
-                  multiple
-                  hidden
-                  onChange={(e) => void handleUpload(e)}
-                />
-                <input
-                  ref={audioInputRef}
-                  type="file"
-                  accept={AUDIO_ACCEPT}
-                  multiple
-                  hidden
-                  onChange={(e) => void handleUpload(e)}
-                />
-                <input
-                  ref={videoInputRef}
-                  type="file"
-                  accept={VIDEO_ACCEPT}
-                  multiple
-                  hidden
-                  onChange={(e) => void handleUpload(e)}
-                />
-
-                {attachments.length > 0 && (
-                  <Stack spacing={1} sx={{ mt: 1.5 }}>
-                    {attachments.map((a) => (
-                      <Paper
-                        key={a.url}
-                        variant="outlined"
-                        sx={{ p: 1, display: "flex", alignItems: "center", gap: 1 }}
-                      >
-                        {a.kind === "image" ? (
-                          <Box
-                            component="img"
-                            src={a.url}
-                            alt={a.filename}
-                            sx={{
-                              width: 36,
-                              height: 36,
-                              objectFit: "cover",
-                              borderRadius: 0.5,
-                              flexShrink: 0,
-                            }}
-                          />
-                        ) : a.kind === "audio" ? (
-                          <MicIcon fontSize="small" color="action" />
-                        ) : a.kind === "video" ? (
-                          <VideocamIcon fontSize="small" color="action" />
-                        ) : (
-                          <AttachFileIcon fontSize="small" color="action" />
-                        )}
-                        <Box sx={{ minWidth: 0, flexGrow: 1 }}>
-                          <Typography variant="body2" noWrap>
-                            {a.filename}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {formatBytes(a.size)}
-                          </Typography>
-                        </Box>
-                        <Tooltip title="Preview">
-                          <IconButton size="small" onClick={() => setPreviewAttachment(a)}>
-                            <VisibilityIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Remove">
-                          <IconButton size="small" onClick={() => removeAttachment(a.url)}>
-                            <CloseIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      </Paper>
-                    ))}
-                  </Stack>
-                )}
-              </Box>
+              <AttachmentPicker
+                value={attachments}
+                onChange={setAttachments}
+                upload={(file) => teamsApi.uploadTaskAttachment(token, team.id, file)}
+                allow={["image", "audio", "video", "markdown", "file"]}
+                onUploadingChange={setUploading}
+              />
             </Stack>
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}>
@@ -700,50 +555,6 @@ export function TasksTab({
         </DialogActions>
       </Dialog>
 
-      <Dialog
-        open={Boolean(previewAttachment)}
-        onClose={() => setPreviewAttachment(null)}
-        fullWidth
-        maxWidth="md"
-      >
-        <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <Typography component="span" noWrap sx={{ fontWeight: 600, mr: 2 }}>
-            {previewAttachment?.filename}
-          </Typography>
-          <IconButton aria-label="Close preview" onClick={() => setPreviewAttachment(null)}>
-            <CloseIcon />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent>
-          {previewAttachment?.kind === "image" && (
-            <Box
-              component="img"
-              src={previewAttachment.url}
-              alt={previewAttachment.filename}
-              sx={{ display: "block", mx: "auto", maxWidth: "100%", maxHeight: "70vh" }}
-            />
-          )}
-          {previewAttachment?.kind === "audio" && (
-            <audio controls autoPlay style={{ width: "100%" }} src={previewAttachment.url}>
-              <track kind="captions" />
-            </audio>
-          )}
-          {previewAttachment?.kind === "video" && (
-            <Box
-              component="video"
-              controls
-              autoPlay
-              src={previewAttachment.url}
-              sx={{ display: "block", mx: "auto", maxWidth: "100%", maxHeight: "70vh" }}
-            />
-          )}
-          {previewAttachment?.kind === "file" && (
-            <Link href={previewAttachment.url} target="_blank" rel="noopener">
-              Open {previewAttachment.filename}
-            </Link>
-          )}
-        </DialogContent>
-      </Dialog>
     </Stack>
   );
 }

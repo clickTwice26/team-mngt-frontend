@@ -4,7 +4,7 @@ import type { MembershipUser } from "@/types/membership";
 
 export type TaskStatus = "todo" | "in_progress" | "done";
 export type TaskPriority = "low" | "medium" | "high" | "urgent";
-export type AttachmentKind = "image" | "audio" | "video" | "file";
+export type AttachmentKind = "image" | "audio" | "video" | "markdown" | "file";
 
 export interface TaskAttachment {
   url: string;

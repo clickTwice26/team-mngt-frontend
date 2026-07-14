@@ -14,6 +14,8 @@ export interface WorkLogComment {
   /** Replies, oldest first. Always empty on a reply — threading is one level deep. */
   replies: WorkLogComment[];
   created_at: string;
+  /** ISO instant after which the author can no longer delete this message. */
+  deletable_until: string;
 }
 
 export interface WorkLogCommentCreate {

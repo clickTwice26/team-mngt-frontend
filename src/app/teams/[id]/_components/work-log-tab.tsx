@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import NextLink from "next/link";
 import Alert from "@mui/material/Alert";
 import Badge from "@mui/material/Badge";
@@ -22,18 +22,16 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import AddIcon from "@mui/icons-material/Add";
 import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutlineOutlined";
-import CloseIcon from "@mui/icons-material/Close";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
-import ImageIcon from "@mui/icons-material/Image";
 import TaskAltIcon from "@mui/icons-material/TaskAlt";
-import VideocamIcon from "@mui/icons-material/Videocam";
 import { DateCalendar } from "@mui/x-date-pickers/DateCalendar";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { PickerDay, type PickerDayProps } from "@mui/x-date-pickers/PickerDay";
 import { TimePicker } from "@mui/x-date-pickers/TimePicker";
 import dayjs, { Dayjs } from "dayjs";
 
+import { AttachmentPicker } from "@/components/attachment-picker";
 import { ApiError } from "@/lib/api/client";
 import { teamsApi } from "@/lib/api/teams";
 import type { Task, TaskAttachment } from "@/types/task";
@@ -42,8 +40,6 @@ import type { WorkLogEntry } from "@/types/work-log";
 
 import { AttachmentView } from "./attachment-view";
 
-const IMAGE_ACCEPT = "image/jpeg,image/png,image/webp,image/gif";
-const VIDEO_ACCEPT = "video/mp4,video/webm,video/quicktime,video/ogg";
 
 const NONE = "__none__"; // sentinel for the "no task" option in the select
 
@@ -431,10 +427,6 @@ function WorkLogDialog({
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const imageInputRef = useRef<HTMLInputElement>(null);
-  const videoInputRef = useRef<HTMLInputElement>(null);
-
-  const hasVideo = attachments.some((a) => a.kind === "video");
 
   const datesValid =
     date !== null && date.isValid() && start !== null && start.isValid() && end !== null && end.isValid();
@@ -457,45 +449,6 @@ function WorkLogDialog({
     rangeError === null &&
     !submitting &&
     !uploading;
-
-  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files ?? []);
-    event.target.value = ""; // allow re-picking the same file
-    if (files.length === 0) return;
-    setError(null);
-    setUploading(true);
-    try {
-      for (const file of files) {
-        const uploaded = await teamsApi.uploadWorkLogAttachment(token, teamId, file);
-        setAttachments((prev) => [...prev, uploaded]);
-      }
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to upload the image.");
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleVideoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    setError(null);
-    setUploading(true);
-    try {
-      const uploaded = await teamsApi.uploadWorkLogAttachment(token, teamId, file);
-      // Only one video per entry — a newly picked video replaces the last one.
-      setAttachments((prev) => [...prev.filter((a) => a.kind !== "video"), uploaded]);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to upload the video.");
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const removeAttachment = (url: string) => {
-    setAttachments((prev) => prev.filter((a) => a.url !== url));
-  };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -599,80 +552,14 @@ function WorkLogDialog({
                 )}
             </TextField>
 
-            <Box>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                Attachments
-              </Typography>
-              <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1 }}>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  startIcon={<ImageIcon />}
-                  disabled={uploading}
-                  onClick={() => imageInputRef.current?.click()}
-                >
-                  Add images
-                </Button>
-                <Tooltip title={hasVideo ? "Replaces the current video" : ""}>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={<VideocamIcon />}
-                    disabled={uploading}
-                    onClick={() => videoInputRef.current?.click()}
-                  >
-                    {hasVideo ? "Replace video" : "Add video"}
-                  </Button>
-                </Tooltip>
-                {uploading && (
-                  <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-                    <CircularProgress size={18} />
-                    <Typography variant="caption" color="text.secondary">
-                      Uploading…
-                    </Typography>
-                  </Stack>
-                )}
-              </Stack>
-              <input
-                ref={imageInputRef}
-                type="file"
-                accept={IMAGE_ACCEPT}
-                multiple
-                hidden
-                onChange={(e) => void handleImageUpload(e)}
-              />
-              <input
-                ref={videoInputRef}
-                type="file"
-                accept={VIDEO_ACCEPT}
-                hidden
-                onChange={(e) => void handleVideoUpload(e)}
-              />
-
-              {attachments.length > 0 && (
-                <Stack direction="row" spacing={1.5} sx={{ flexWrap: "wrap", gap: 1.5, mt: 1.5 }}>
-                  {attachments.map((a) => (
-                    <Box key={a.url} sx={{ position: "relative" }}>
-                      <AttachmentView attachment={a} />
-                      <IconButton
-                        size="small"
-                        aria-label={`Remove ${a.filename}`}
-                        onClick={() => removeAttachment(a.url)}
-                        sx={{
-                          position: "absolute",
-                          top: 2,
-                          right: 2,
-                          bgcolor: "background.paper",
-                          "&:hover": { bgcolor: "background.paper" },
-                        }}
-                      >
-                        <CloseIcon fontSize="inherit" />
-                      </IconButton>
-                    </Box>
-                  ))}
-                </Stack>
-              )}
-            </Box>
+            <AttachmentPicker
+              value={attachments}
+              onChange={setAttachments}
+              upload={(file) => teamsApi.uploadWorkLogAttachment(token, teamId, file)}
+              allow={["image", "video", "markdown", "file"]}
+              limits={{ video: 1 }}
+              onUploadingChange={setUploading}
+            />
           </Stack>
         </DialogContent>
         <DialogActions>

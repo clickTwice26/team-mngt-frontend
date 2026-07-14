@@ -1,8 +1,10 @@
 "use client";
 
+import NextLink from "next/link";
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
 import Link from "@mui/material/Link";
+import DescriptionIcon from "@mui/icons-material/Description";
 import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
 
 import type { TaskAttachment } from "@/types/task";
@@ -46,6 +48,22 @@ export function AttachmentView({ attachment }: { attachment: TaskAttachment }) {
         preload="metadata"
         src={attachment.url}
         sx={{ width: 260, maxHeight: 180, borderRadius: 1, bgcolor: "black" }}
+      />
+    );
+  }
+  if (attachment.kind === "markdown") {
+    // Opens the in-app reader rather than downloading the raw file.
+    return (
+      <Chip
+        icon={<DescriptionIcon />}
+        label={attachment.filename}
+        component={NextLink}
+        href={`/documents?url=${encodeURIComponent(attachment.url)}&name=${encodeURIComponent(
+          attachment.filename,
+        )}`}
+        clickable
+        variant="outlined"
+        color="primary"
       />
     );
   }

@@ -1,32 +1,31 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Alert from "@mui/material/Alert";
 import Avatar from "@mui/material/Avatar";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
-import CircularProgress from "@mui/material/CircularProgress";
+import Dialog from "@mui/material/Dialog";
+import DialogActions from "@mui/material/DialogActions";
+import DialogContent from "@mui/material/DialogContent";
+import DialogContentText from "@mui/material/DialogContentText";
+import DialogTitle from "@mui/material/DialogTitle";
 import IconButton from "@mui/material/IconButton";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
-import CloseIcon from "@mui/icons-material/Close";
 import DeleteIcon from "@mui/icons-material/Delete";
-import ImageIcon from "@mui/icons-material/Image";
 import SendIcon from "@mui/icons-material/Send";
-import VideocamIcon from "@mui/icons-material/Videocam";
 
+import { AttachmentPicker } from "@/components/attachment-picker";
 import { Markdown } from "@/components/markdown";
 import { ApiError } from "@/lib/api/client";
 import type { MembershipUser } from "@/types/membership";
 import type { TaskAttachment } from "@/types/task";
 
 import { AttachmentView } from "./attachment-view";
-
-const IMAGE_ACCEPT = "image/jpeg,image/png,image/webp,image/gif";
-const VIDEO_ACCEPT = "video/mp4,video/webm,video/quicktime,video/ogg";
 
 /** The shape both task comments and work log comments share. Threading is one
  *  level deep, so `replies` is always empty on a reply. */
@@ -38,6 +37,8 @@ export interface ThreadComment {
   attachments: TaskAttachment[];
   replies: ThreadComment[];
   created_at: string;
+  /** ISO instant after which the author can no longer delete this message. */
+  deletable_until: string;
 }
 
 export interface NewComment {
@@ -66,6 +67,36 @@ function formatTimestamp(iso: string): string {
 
 function initials(name: string | null, email: string): string {
   return (name?.trim() || email).slice(0, 1).toUpperCase();
+}
+
+function formatAge(iso: string): string {
+  const minutes = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+}
+
+/**
+ * Milliseconds left in the delete window, ticking down once a second.
+ *
+ * Recomputed on a timer rather than once on render, so a message posted while
+ * you're looking at the thread visibly loses its delete button when the window
+ * closes — instead of offering a button that would fail on click.
+ */
+function useDeleteWindow(deletableUntil: string): { open: boolean; secondsLeft: number } {
+  const deadline = new Date(deletableUntil).getTime();
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (Date.now() > deadline) return; // already closed — nothing to count down
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [deadline]);
+
+  const remaining = deadline - now;
+  return { open: remaining > 0, secondsLeft: Math.max(0, Math.ceil(remaining / 1000)) };
 }
 
 /**
@@ -179,21 +210,41 @@ function CommentBody({
   currentUserId: string;
   actions: ThreadActions;
 }) {
+  const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isAuthor = comment.author.id === currentUserId;
+  const { open: windowOpen, secondsLeft } = useDeleteWindow(comment.deletable_until);
+
+  // Only the author can ever delete, so the button is theirs alone — but it
+  // stays visible (disabled) once the window shuts, so the rule is discoverable
+  // rather than a button that silently vanishes.
+  const canDelete = isAuthor && windowOpen;
+  const blockedReason = isAuthor
+    ? `Messages can only be deleted within 10 minutes of posting. This one was posted ${formatAge(
+        comment.created_at,
+      )}.`
+    : null;
 
   const handleDelete = async () => {
     setDeleting(true);
     setError(null);
     try {
       await actions.remove(comment.id);
+      setConfirming(false);
       await actions.reload();
     } catch (err) {
+      // The window may have closed between opening this dialog and confirming;
+      // the server is the authority, so surface whatever it says.
       setError(err instanceof ApiError ? err.message : "Failed to delete the message.");
       setDeleting(false);
     }
   };
+
+  const remainingLabel =
+    secondsLeft >= 60
+      ? `${Math.ceil(secondsLeft / 60)} min left`
+      : `${secondsLeft}s left`;
 
   return (
     <Stack direction="row" spacing={1.5} sx={{ alignItems: "flex-start" }}>
@@ -209,13 +260,18 @@ function CommentBody({
             {formatTimestamp(comment.created_at)}
           </Typography>
           {isAuthor && (
-            <Tooltip title="Delete message">
+            <Tooltip title={canDelete ? `Delete message · ${remainingLabel}` : blockedReason ?? ""}>
+              {/* A disabled button fires no events, so the tooltip needs a live
+                  wrapper to hang off — otherwise the reason never shows. */}
               <span>
                 <IconButton
                   size="small"
-                  disabled={deleting}
+                  disabled={!canDelete || deleting}
                   aria-label="Delete message"
-                  onClick={() => void handleDelete()}
+                  onClick={() => {
+                    setError(null);
+                    setConfirming(true);
+                  }}
                 >
                   <DeleteIcon fontSize="inherit" />
                 </IconButton>
@@ -235,6 +291,42 @@ function CommentBody({
         )}
 
         {error && <Alert severity="error">{error}</Alert>}
+
+        <Dialog open={confirming} onClose={() => !deleting && setConfirming(false)}>
+          <DialogTitle>Delete this message?</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2}>
+              <DialogContentText>
+                {comment.replies.length > 0
+                  ? `This also deletes the ${comment.replies.length} ${
+                      comment.replies.length === 1 ? "reply" : "replies"
+                    } to it. This can't be undone.`
+                  : "This can't be undone."}
+              </DialogContentText>
+              {windowOpen && (
+                <Alert severity="info">
+                  You can delete a message for {remainingLabel.replace(" left", "")} more —
+                  after 10 minutes from posting it becomes permanent.
+                </Alert>
+              )}
+              {!windowOpen && blockedReason && <Alert severity="warning">{blockedReason}</Alert>}
+              {error && <Alert severity="error">{error}</Alert>}
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setConfirming(false)} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button
+              color="error"
+              variant="contained"
+              disabled={deleting || !windowOpen}
+              onClick={() => void handleDelete()}
+            >
+              {deleting ? "Deleting…" : "Delete"}
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Stack>
     </Stack>
   );
@@ -262,48 +354,9 @@ function CommentComposer({
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const imageInput = useRef<HTMLInputElement>(null);
-  const videoInput = useRef<HTMLInputElement>(null);
-
-  const hasVideo = attachments.some((a) => a.kind === "video");
 
   // Mirrors the server rule: a message needs text, an attachment, or both.
   const canSubmit = (body.trim().length > 0 || attachments.length > 0) && !uploading;
-
-  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files ?? []);
-    event.target.value = ""; // allow re-picking the same file
-    if (files.length === 0) return;
-    setError(null);
-    setUploading(true);
-    try {
-      for (const file of files) {
-        const uploaded = await actions.upload(file);
-        setAttachments((prev) => [...prev, uploaded]);
-      }
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to upload the image.");
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleVideoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    setError(null);
-    setUploading(true);
-    try {
-      const uploaded = await actions.upload(file);
-      // The server allows one video per message, so a new pick replaces the last.
-      setAttachments((prev) => [...prev.filter((a) => a.kind !== "video"), uploaded]);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to upload the video.");
-    } finally {
-      setUploading(false);
-    }
-  };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -342,66 +395,17 @@ function CommentComposer({
         onChange={(e) => setBody(e.target.value)}
       />
 
-      {attachments.length > 0 && (
-        <Stack direction="row" spacing={1.5} sx={{ flexWrap: "wrap", gap: 1.5 }}>
-          {attachments.map((a) => (
-            <Box key={a.url} sx={{ position: "relative" }}>
-              <AttachmentView attachment={a} />
-              <IconButton
-                size="small"
-                aria-label={`Remove ${a.filename}`}
-                onClick={() => setAttachments((prev) => prev.filter((x) => x.url !== a.url))}
-                sx={{
-                  position: "absolute",
-                  top: 2,
-                  right: 2,
-                  bgcolor: "background.paper",
-                  "&:hover": { bgcolor: "background.paper" },
-                }}
-              >
-                <CloseIcon fontSize="inherit" />
-              </IconButton>
-            </Box>
-          ))}
-        </Stack>
-      )}
+      <AttachmentPicker
+        value={attachments}
+        onChange={setAttachments}
+        upload={actions.upload}
+        allow={["image", "video", "markdown", "file"]}
+        limits={{ video: 1 }}
+        label="Attachments"
+        onUploadingChange={setUploading}
+      />
 
       <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-        <input
-          ref={imageInput}
-          type="file"
-          hidden
-          multiple
-          accept={IMAGE_ACCEPT}
-          onChange={(e) => void handleImageUpload(e)}
-        />
-        <input
-          ref={videoInput}
-          type="file"
-          hidden
-          accept={VIDEO_ACCEPT}
-          onChange={(e) => void handleVideoUpload(e)}
-        />
-        <Button
-          size="small"
-          startIcon={uploading ? <CircularProgress size={14} /> : <ImageIcon />}
-          disabled={uploading}
-          onClick={() => imageInput.current?.click()}
-        >
-          {uploading ? "Uploading…" : "Image"}
-        </Button>
-        <Tooltip title={hasVideo ? "Replaces the current video" : ""}>
-          <span>
-            <Button
-              size="small"
-              startIcon={<VideocamIcon />}
-              disabled={uploading}
-              onClick={() => videoInput.current?.click()}
-            >
-              {hasVideo ? "Replace video" : "Video"}
-            </Button>
-          </span>
-        </Tooltip>
         <Box sx={{ flexGrow: 1 }} />
         {onCancel && (
           <Button size="small" onClick={onCancel} disabled={submitting}>
