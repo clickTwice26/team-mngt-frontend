@@ -26,6 +26,8 @@ import type { TaskComment } from "@/types/task-comment";
 import { AttachmentView } from "../../_components/attachment-view";
 import { CommentThreadList } from "../../_components/comment-thread";
 import {
+  CATEGORY_COLORS,
+  CATEGORY_LABELS,
   PRIORITY_COLORS,
   PRIORITY_LABELS,
   STATUS_COLORS,
@@ -58,17 +60,10 @@ export default function TaskDiscussionPage() {
   const load = useCallback(async () => {
     if (!token) return;
     try {
-      // There's no fetch-one-task endpoint, so pull the team's tasks and pick
-      // ours out. The comments call is what enforces access, not this.
-      const [tasks, comments] = await Promise.all([
-        teamsApi.listTasks(token, teamId),
+      const [task, comments] = await Promise.all([
+        teamsApi.getTask(token, teamId, taskId),
         teamsApi.listTaskComments(token, teamId, taskId),
       ]);
-      const task = tasks.find((t) => t.id === taskId);
-      if (!task) {
-        setState({ kind: "error", message: "Task not found." });
-        return;
-      }
       setState({ kind: "ok", task, comments });
     } catch (err) {
       setState({
@@ -184,6 +179,12 @@ function TaskDetails({ task }: { task: Task }) {
             {task.title}
           </Typography>
           <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1 }}>
+            <Chip
+              size="small"
+              label={CATEGORY_LABELS[task.category]}
+              color={CATEGORY_COLORS[task.category]}
+              variant="outlined"
+            />
             <Chip
               size="small"
               label={PRIORITY_LABELS[task.priority]}

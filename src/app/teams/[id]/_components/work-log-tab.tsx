@@ -109,11 +109,15 @@ export function WorkLogTab({
 
   useEffect(() => {
     queueMicrotask(load);
+    // Filtered to me by the server now, rather than by pulling every task the
+    // team ever had and discarding most of them here.
     teamsApi
-      .listTasks(token, team.id)
-      .then((tasks) =>
-        setMyTasks(tasks.filter((t) => t.assignees.some((a) => a.id === currentUserId))),
-      )
+      .listTasks(token, team.id, {
+        assigneeId: currentUserId,
+        sort: "deadline",
+        limit: 100,
+      })
+      .then((page) => setMyTasks(page.items))
       .catch(() => setMyTasks([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, team.id, currentUserId]);

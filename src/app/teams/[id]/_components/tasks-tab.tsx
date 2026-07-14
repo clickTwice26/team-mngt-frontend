@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import NextLink from "next/link";
 import Alert from "@mui/material/Alert";
 import Autocomplete from "@mui/material/Autocomplete";
@@ -16,6 +16,7 @@ import DialogContentText from "@mui/material/DialogContentText";
 import DialogTitle from "@mui/material/DialogTitle";
 import IconButton from "@mui/material/IconButton";
 import MenuItem from "@mui/material/MenuItem";
+import Pagination from "@mui/material/Pagination";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
@@ -39,18 +40,36 @@ import { teamsApi } from "@/lib/api/teams";
 
 import { AttachmentView } from "./attachment-view";
 import {
+  DEFAULT_FILTERS,
+  TaskFilterBar,
+  hasActiveFilters,
+  toListParams,
+} from "./task-filters";
+import type { TaskFilterState } from "./task-filters";
+import {
+  CATEGORY_COLORS,
+  CATEGORY_LABELS,
+  CATEGORY_OPTIONS,
   PRIORITY_COLORS,
   PRIORITY_LABELS,
+  PRIORITY_OPTIONS,
   STATUS_COLORS,
   STATUS_LABELS,
+  STATUS_OPTIONS,
   formatDeadline,
   isOverdue,
 } from "./task-meta";
 import type { Membership, MembershipUser } from "@/types/membership";
-import type { Task, TaskAttachment, TaskPriority, TaskStatus } from "@/types/task";
+import type {
+  Task,
+  TaskAttachment,
+  TaskCategory,
+  TaskPriority,
+  TaskStatus,
+} from "@/types/task";
 import type { Team } from "@/types/team";
 
-
+const PAGE_SIZE_OPTIONS = [10, 25, 50];
 
 export function TasksTab({
   team,
@@ -65,11 +84,19 @@ export function TasksTab({
 }) {
   type State =
     | { kind: "loading" }
-    | { kind: "ok"; tasks: Task[] }
+    | { kind: "ok"; tasks: Task[]; total: number }
     | { kind: "error"; message: string };
 
   const [state, setState] = useState<State>({ kind: "loading" });
   const [members, setMembers] = useState<Membership[]>([]);
+
+  // --- Filtering + paging (all resolved server-side) -------------------------
+  const [filters, setFilters] = useState<TaskFilterState>(DEFAULT_FILTERS);
+  const [search, setSearch] = useState("");
+  // What's actually sent. Debounced, so typing doesn't fire a request per key.
+  const [query, setQuery] = useState("");
+  const [offset, setOffset] = useState(0);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0]);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -77,6 +104,7 @@ export function TasksTab({
   const [description, setDescription] = useState("");
   const [descMode, setDescMode] = useState<"write" | "preview">("write");
   const [priority, setPriority] = useState<TaskPriority>("medium");
+  const [category, setCategory] = useState<TaskCategory>("general");
   const [status, setStatus] = useState<TaskStatus>("todo");
   const [deadline, setDeadline] = useState<Dayjs | null>(null);
   const [assignees, setAssignees] = useState<MembershipUser[]>([]);
@@ -89,35 +117,70 @@ export function TasksTab({
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  const load = () => {
+  useEffect(() => {
+    const id = setTimeout(() => {
+      // A new search must restart at page 1 — otherwise you land on "page 3" of
+      // a result set that may only have one page. Reset here rather than in a
+      // second effect, which would be a setState cascade.
+      setQuery((prev) => {
+        const next = search.trim();
+        if (next !== prev) setOffset(0);
+        return next;
+      });
+    }, 300);
+    return () => clearTimeout(id);
+  }, [search]);
+
+  const load = useCallback(() => {
     setState({ kind: "loading" });
     teamsApi
-      .listTasks(token, team.id)
-      .then((tasks) => setState({ kind: "ok", tasks }))
+      .listTasks(token, team.id, {
+        ...toListParams(filters, query),
+        limit: pageSize,
+        offset,
+      })
+      .then((page) => {
+        // Deleting the last task on the last page leaves you standing past the
+        // end of the list. Step back rather than show an empty page — the
+        // offset change re-runs this effect.
+        if (page.items.length === 0 && page.total > 0 && offset >= page.total) {
+          setOffset(Math.max(0, (Math.ceil(page.total / pageSize) - 1) * pageSize));
+          return;
+        }
+        setState({ kind: "ok", tasks: page.items, total: page.total });
+      })
       .catch((err: unknown) =>
         setState({
           kind: "error",
-          message: err instanceof Error ? err.message : "Failed to load tasks.",
+          message: err instanceof ApiError ? err.message : "Failed to load tasks.",
         }),
       );
-  };
+  }, [token, team.id, filters, query, pageSize, offset]);
 
   useEffect(() => {
     queueMicrotask(load);
+  }, [load]);
+
+  useEffect(() => {
     teamsApi
       .listMembers(token, team.id)
       .then(setMembers)
       .catch(() => setMembers([]));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, team.id]);
 
   const memberOptions = members.map((m) => m.user);
+
+  const changeFilters = (next: TaskFilterState) => {
+    setFilters(next);
+    setOffset(0);
+  };
 
   const resetForm = () => {
     setTitle("");
     setDescription("");
     setDescMode("write");
     setPriority("medium");
+    setCategory("general");
     setStatus("todo");
     setDeadline(null);
     setAssignees([]);
@@ -137,6 +200,7 @@ export function TasksTab({
     setDescription(task.description ?? "");
     setDescMode("write");
     setPriority(task.priority);
+    setCategory(task.category);
     setStatus(task.status);
     setDeadline(task.deadline ? dayjs(task.deadline) : null);
     setAssignees(task.assignees);
@@ -154,6 +218,7 @@ export function TasksTab({
         title,
         description: description.trim() || null,
         priority,
+        category,
         // The picker works in local time; the API stores the UTC instant.
         deadline: deadline && deadline.isValid() ? deadline.toISOString() : null,
         assignee_ids: assignees.map((a) => a.id),
@@ -210,6 +275,11 @@ export function TasksTab({
     }
   };
 
+  const total = state.kind === "ok" ? state.total : 0;
+  const shownTo = state.kind === "ok" ? offset + state.tasks.length : 0;
+  const pageCount = Math.ceil(total / pageSize);
+  const filtered = hasActiveFilters(filters, search);
+
   return (
     <Stack spacing={2}>
       <Stack direction="row" sx={{ justifyContent: "flex-end" }}>
@@ -217,6 +287,17 @@ export function TasksTab({
           New task
         </Button>
       </Stack>
+
+      <TaskFilterBar
+        filters={filters}
+        onChange={changeFilters}
+        search={search}
+        onSearchChange={setSearch}
+        members={members}
+        currentUserId={currentUserId}
+        total={total}
+        loading={state.kind === "loading"}
+      />
 
       {state.kind === "loading" && (
         <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
@@ -230,7 +311,9 @@ export function TasksTab({
       {state.kind === "ok" && state.tasks.length === 0 && (
         <Paper variant="outlined" sx={{ p: 4, textAlign: "center" }}>
           <Typography color="text.secondary">
-            No tasks yet. Click &quot;New task&quot; to submit one.
+            {filtered
+              ? "No tasks match these filters."
+              : 'No tasks yet. Click "New task" to submit one.'}
           </Typography>
         </Paper>
       )}
@@ -256,6 +339,12 @@ export function TasksTab({
                   >
                     <Stack direction="row" spacing={1} sx={{ alignItems: "center", flexWrap: "wrap" }}>
                       <Typography sx={{ fontWeight: 600 }}>{task.title}</Typography>
+                      <Chip
+                        label={CATEGORY_LABELS[task.category]}
+                        color={CATEGORY_COLORS[task.category]}
+                        size="small"
+                        variant="outlined"
+                      />
                       <Chip
                         label={PRIORITY_LABELS[task.priority]}
                         color={PRIORITY_COLORS[task.priority]}
@@ -343,9 +432,11 @@ export function TasksTab({
                       }
                       sx={{ minWidth: 150 }}
                     >
-                      <MenuItem value="todo">To do</MenuItem>
-                      <MenuItem value="in_progress">In progress</MenuItem>
-                      <MenuItem value="done">Done</MenuItem>
+                      {STATUS_OPTIONS.map((o) => (
+                        <MenuItem key={o.value} value={o.value}>
+                          {o.label}
+                        </MenuItem>
+                      ))}
                     </TextField>
                     <Typography variant="caption" color="text.secondary">
                       Submitted by {task.created_by.full_name || task.created_by.email}
@@ -373,6 +464,45 @@ export function TasksTab({
               </Paper>
             );
           })}
+        </Stack>
+      )}
+
+      {state.kind === "ok" && total > 0 && (
+        <Stack
+          direction={{ xs: "column", sm: "row" }}
+          spacing={1.5}
+          sx={{ alignItems: "center", justifyContent: "space-between", pt: 0.5 }}
+        >
+          <Typography variant="caption" color="text.secondary">
+            Showing {offset + 1}–{shownTo} of {total}
+          </Typography>
+          {pageCount > 1 && (
+            <Pagination
+              count={pageCount}
+              page={Math.floor(offset / pageSize) + 1}
+              onChange={(_, page) => setOffset((page - 1) * pageSize)}
+              size="small"
+              shape="rounded"
+              color="primary"
+            />
+          )}
+          <TextField
+            select
+            size="small"
+            label="Per page"
+            value={pageSize}
+            onChange={(e) => {
+              setPageSize(Number(e.target.value));
+              setOffset(0);
+            }}
+            sx={{ minWidth: 110 }}
+          >
+            {PAGE_SIZE_OPTIONS.map((size) => (
+              <MenuItem key={size} value={size}>
+                {size}
+              </MenuItem>
+            ))}
+          </TextField>
         </Stack>
       )}
 
@@ -444,16 +574,32 @@ export function TasksTab({
               <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                 <TextField
                   select
+                  label="Category"
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value as TaskCategory)}
+                  fullWidth
+                >
+                  {CATEGORY_OPTIONS.map((o) => (
+                    <MenuItem key={o.value} value={o.value}>
+                      {o.label}
+                    </MenuItem>
+                  ))}
+                </TextField>
+                <TextField
+                  select
                   label="Priority"
                   value={priority}
                   onChange={(e) => setPriority(e.target.value as TaskPriority)}
                   fullWidth
                 >
-                  <MenuItem value="low">Low</MenuItem>
-                  <MenuItem value="medium">Medium</MenuItem>
-                  <MenuItem value="high">High</MenuItem>
-                  <MenuItem value="urgent">Urgent</MenuItem>
+                  {PRIORITY_OPTIONS.map((o) => (
+                    <MenuItem key={o.value} value={o.value}>
+                      {o.label}
+                    </MenuItem>
+                  ))}
                 </TextField>
+              </Stack>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                 <DateTimePicker
                   label="Deadline"
                   value={deadline}
@@ -466,26 +612,28 @@ export function TasksTab({
                     field: { clearable: true, onClear: () => setDeadline(null) },
                   }}
                 />
+                {editingTask && (
+                  <TextField
+                    select
+                    label="Status"
+                    value={status}
+                    disabled={!editingTask.assignees.some((a) => a.id === currentUserId)}
+                    helperText={
+                      editingTask.assignees.some((a) => a.id === currentUserId)
+                        ? undefined
+                        : "Only an assignee can change the status"
+                    }
+                    onChange={(e) => setStatus(e.target.value as TaskStatus)}
+                    fullWidth
+                  >
+                    {STATUS_OPTIONS.map((o) => (
+                      <MenuItem key={o.value} value={o.value}>
+                        {o.label}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                )}
               </Stack>
-              {editingTask && (
-                <TextField
-                  select
-                  label="Status"
-                  value={status}
-                  disabled={!editingTask.assignees.some((a) => a.id === currentUserId)}
-                  helperText={
-                    editingTask.assignees.some((a) => a.id === currentUserId)
-                      ? undefined
-                      : "Only an assignee can change the status"
-                  }
-                  onChange={(e) => setStatus(e.target.value as TaskStatus)}
-                  fullWidth
-                >
-                  <MenuItem value="todo">To do</MenuItem>
-                  <MenuItem value="in_progress">In progress</MenuItem>
-                  <MenuItem value="done">Done</MenuItem>
-                </TextField>
-              )}
               <Autocomplete
                 multiple
                 options={memberOptions}
@@ -554,7 +702,6 @@ export function TasksTab({
           </Button>
         </DialogActions>
       </Dialog>
-
     </Stack>
   );
 }

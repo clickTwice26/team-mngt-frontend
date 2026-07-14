@@ -8,7 +8,13 @@ import type { Meeting, MeetingCreate, MeetingUpdate } from "@/types/meeting";
 import type { MeetingComment, MeetingCommentCreate } from "@/types/meeting-comment";
 import type { MemberPerformance } from "@/types/performance";
 import type { Page, Team, TeamCreate, TeamUpdate } from "@/types/team";
-import type { Task, TaskAttachment, TaskCreate, TaskUpdate } from "@/types/task";
+import type {
+  Task,
+  TaskAttachment,
+  TaskCreate,
+  TaskListParams,
+  TaskUpdate,
+} from "@/types/task";
 import type { TaskComment, TaskCommentCreate } from "@/types/task-comment";
 import type { TeamMessage, TeamMessageCreate } from "@/types/team-message";
 import type { WorkLogCreate, WorkLogEntry, WorkLogUpdate } from "@/types/work-log";
@@ -80,8 +86,31 @@ export const teamsApi = {
       headers: authHeaders(token),
     }),
 
-  listTasks: (token: string, teamId: string) =>
-    apiClient.get<Task[]>(`/teams/${teamId}/tasks`, {
+  /** One filtered, sorted page of a team's tasks. Every filter runs server-side
+   *  — the task you're looking for is rarely on the page you happen to be on. */
+  listTasks: (token: string, teamId: string, params?: TaskListParams) => {
+    const query = new URLSearchParams();
+    if (params?.q) query.set("q", params.q);
+    if (params?.status) query.set("status", params.status);
+    if (params?.priority) query.set("priority", params.priority);
+    if (params?.category) query.set("category", params.category);
+    if (params?.assigneeId) query.set("assignee_id", params.assigneeId);
+    if (params?.dueFrom) query.set("due_from", params.dueFrom);
+    if (params?.dueTo) query.set("due_to", params.dueTo);
+    if (params?.dueUnset) query.set("due_unset", "true");
+    if (params?.overdue) query.set("overdue", "true");
+    if (params?.sort) query.set("sort", params.sort);
+    if (params?.limit != null) query.set("limit", String(params.limit));
+    if (params?.offset != null) query.set("offset", String(params.offset));
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return apiClient.get<Page<Task>>(`/teams/${teamId}/tasks${suffix}`, {
+      cache: "no-store",
+      headers: authHeaders(token),
+    });
+  },
+
+  getTask: (token: string, teamId: string, taskId: string) =>
+    apiClient.get<Task>(`/teams/${teamId}/tasks/${taskId}`, {
       cache: "no-store",
       headers: authHeaders(token),
     }),

@@ -1,9 +1,13 @@
-/** Presentation helpers for a task's status, priority, and deadline.
+/** Presentation helpers for a task's status, priority, category, and deadline.
  *
  * Shared by the tasks tab and the task discussion page so both render the same
- * labels and colours. */
+ * labels and colours — and by the filter bar, whose dropdowns are derived from
+ * the label maps below rather than hand-listed, so a new category can't show up
+ * on a card while going missing from the filter. */
 
-import type { Task, TaskPriority, TaskStatus } from "@/types/task";
+import dayjs from "dayjs";
+
+import type { Task, TaskCategory, TaskListParams, TaskPriority, TaskStatus } from "@/types/task";
 
 export const STATUS_LABELS: Record<TaskStatus, string> = {
   todo: "To do",
@@ -30,6 +34,104 @@ export const PRIORITY_COLORS: Record<TaskPriority, "default" | "info" | "warning
   high: "warning",
   urgent: "error",
 };
+
+export const CATEGORY_LABELS: Record<TaskCategory, string> = {
+  general: "General",
+  feature: "Feature",
+  bug: "Bug",
+  improvement: "Improvement",
+  design: "Design",
+  research: "Research",
+  documentation: "Documentation",
+  maintenance: "Maintenance",
+};
+
+/** Category chips are rendered *outlined*, so these tints read as a quiet second
+ *  dimension rather than competing with the filled priority and status chips. */
+export const CATEGORY_COLORS: Record<
+  TaskCategory,
+  "default" | "primary" | "secondary" | "info" | "success" | "warning" | "error"
+> = {
+  general: "default",
+  feature: "primary",
+  bug: "error",
+  improvement: "success",
+  design: "secondary",
+  research: "info",
+  documentation: "default",
+  maintenance: "warning",
+};
+
+// --- Dropdown options ---------------------------------------------------------
+
+export interface Option<T> {
+  value: T;
+  label: string;
+}
+
+const toOptions = <T extends string>(labels: Record<T, string>): Option<T>[] =>
+  (Object.keys(labels) as T[]).map((value) => ({ value, label: labels[value] }));
+
+export const STATUS_OPTIONS = toOptions(STATUS_LABELS);
+export const PRIORITY_OPTIONS = toOptions(PRIORITY_LABELS);
+export const CATEGORY_OPTIONS = toOptions(CATEGORY_LABELS);
+
+export const SORT_OPTIONS: Option<NonNullable<TaskListParams["sort"]>>[] = [
+  { value: "newest", label: "Newest first" },
+  { value: "oldest", label: "Oldest first" },
+  { value: "deadline", label: "Deadline (soonest)" },
+  { value: "updated", label: "Recently updated" },
+];
+
+// --- The deadline filter ------------------------------------------------------
+
+export type DuePreset = "any" | "overdue" | "today" | "week" | "month" | "none";
+
+export const DUE_OPTIONS: Option<DuePreset>[] = [
+  { value: "any", label: "Any time" },
+  { value: "overdue", label: "Overdue" },
+  { value: "today", label: "Due today" },
+  { value: "week", label: "Due this week" },
+  { value: "month", label: "Due this month" },
+  { value: "none", label: "No deadline" },
+];
+
+/**
+ * Turn a deadline preset into query params.
+ *
+ * The window is resolved here, on the client, and sent as absolute instants:
+ * "this week" is a local-calendar notion, and a server asked to interpret it
+ * would have to guess a timezone. `overdue` and `none` aren't windows at all,
+ * so they travel as their own flags.
+ */
+export function dueParams(preset: DuePreset): Pick<
+  TaskListParams,
+  "dueFrom" | "dueTo" | "dueUnset" | "overdue"
+> {
+  switch (preset) {
+    case "overdue":
+      return { overdue: true };
+    case "none":
+      return { dueUnset: true };
+    case "today":
+      return {
+        dueFrom: dayjs().startOf("day").toISOString(),
+        dueTo: dayjs().endOf("day").toISOString(),
+      };
+    case "week":
+      return {
+        dueFrom: dayjs().startOf("week").toISOString(),
+        dueTo: dayjs().endOf("week").toISOString(),
+      };
+    case "month":
+      return {
+        dueFrom: dayjs().startOf("month").toISOString(),
+        dueTo: dayjs().endOf("month").toISOString(),
+      };
+    default:
+      return {};
+  }
+}
 
 /** A deadline is an instant now, so show the time alongside the date. */
 export function formatDeadline(iso: string): string {
