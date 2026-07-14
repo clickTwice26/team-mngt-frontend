@@ -37,6 +37,8 @@ import { teamsApi } from "@/lib/api/teams";
 import type { Membership, MembershipUser } from "@/types/membership";
 import type { Team } from "@/types/team";
 
+import { TasksTab } from "./_components/tasks-tab";
+
 type TeamState =
   | { kind: "loading" }
   | { kind: "ok"; team: Team }
@@ -111,6 +113,7 @@ export default function TeamDetailPage() {
         <Tabs value={tab} onChange={(_, value) => setTab(value)}>
           <Tab label="Overview" />
           <Tab label="Members" />
+          <Tab label="Tasks" />
         </Tabs>
 
         {tab === 0 && (
@@ -122,6 +125,14 @@ export default function TeamDetailPage() {
         )}
         {tab === 1 && (
           <TeamMembersTab team={team} token={token!} canManage={user.is_super_admin} />
+        )}
+        {tab === 2 && (
+          <TasksTab
+            team={team}
+            token={token!}
+            currentUserId={user.id}
+            isSuperAdmin={user.is_super_admin}
+          />
         )}
       </Stack>
     </AppShell>
@@ -239,13 +250,17 @@ function TeamMembersTab({
   };
 
   useEffect(() => {
-    companiesApi
-      .listEmployees(token, team.company_id)
-      .then((employees) => setCompanyEmployees(employees.map((m) => m.user)))
-      .catch(() => setCompanyEmployees([]));
+    // Only super admins/developers can assign members, so only they need the
+    // company's employee directory — everyone else would just get a 403.
+    if (canManage) {
+      companiesApi
+        .listEmployees(token, team.company_id)
+        .then((employees) => setCompanyEmployees(employees.map((m) => m.user)))
+        .catch(() => setCompanyEmployees([]));
+    }
     queueMicrotask(loadMembers);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, team.id, team.company_id]);
+  }, [token, team.id, team.company_id, canManage]);
 
   // Only company employees who aren't already on this team can be assigned.
   const availableEmployees = () => {

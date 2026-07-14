@@ -4,6 +4,7 @@
 import { apiClient } from "@/lib/api/client";
 import type { Membership } from "@/types/membership";
 import type { Page, Team, TeamCreate, TeamUpdate } from "@/types/team";
+import type { Task, TaskAttachment, TaskCreate, TaskUpdate } from "@/types/task";
 
 const authHeaders = (token: string) => ({ Authorization: `Bearer ${token}` });
 
@@ -52,4 +53,31 @@ export const teamsApi = {
     apiClient.delete<{ message: string }>(`/teams/${teamId}/members/${userId}`, {
       headers: authHeaders(token),
     }),
+
+  listTasks: (token: string, teamId: string) =>
+    apiClient.get<Task[]>(`/teams/${teamId}/tasks`, {
+      cache: "no-store",
+      headers: authHeaders(token),
+    }),
+
+  createTask: (token: string, teamId: string, payload: TaskCreate) =>
+    apiClient.post<Task>(`/teams/${teamId}/tasks`, payload, { headers: authHeaders(token) }),
+
+  updateTask: (token: string, teamId: string, taskId: string, payload: TaskUpdate) =>
+    apiClient.patch<Task>(`/teams/${teamId}/tasks/${taskId}`, payload, {
+      headers: authHeaders(token),
+    }),
+
+  removeTask: (token: string, teamId: string, taskId: string) =>
+    apiClient.delete<{ message: string }>(`/teams/${teamId}/tasks/${taskId}`, {
+      headers: authHeaders(token),
+    }),
+
+  uploadTaskAttachment: (token: string, teamId: string, file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return apiClient.upload<TaskAttachment>(`/teams/${teamId}/tasks/attachments`, formData, {
+      headers: authHeaders(token),
+    });
+  },
 };
