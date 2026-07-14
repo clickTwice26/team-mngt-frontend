@@ -7,6 +7,8 @@ import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
+import IconButton from "@mui/material/IconButton";
+import InputAdornment from "@mui/material/InputAdornment";
 import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
@@ -15,12 +17,14 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import AssignmentIcon from "@mui/icons-material/Assignment";
 import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutlineOutlined";
+import CloseIcon from "@mui/icons-material/Close";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutlineOutlined";
 import EditIcon from "@mui/icons-material/Edit";
 import EventIcon from "@mui/icons-material/Event";
 import GroupIcon from "@mui/icons-material/Group";
 import LockIcon from "@mui/icons-material/Lock";
 import ScheduleIcon from "@mui/icons-material/Schedule";
+import SearchIcon from "@mui/icons-material/Search";
 import dayjs from "dayjs";
 
 import { ApiError } from "@/lib/api/client";
@@ -90,12 +94,34 @@ export function ActivityTab({ team, token }: { team: Team; token: string }) {
   const [state, setState] = useState<State>({ kind: "loading" });
   const [offset, setOffset] = useState(0);
   const [filter, setFilter] = useState("all");
+  const [search, setSearch] = useState("");
+  // What's actually sent. Debounced so typing doesn't fire a request per key.
+  const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    const id = setTimeout(() => {
+      // A new search must restart at page 1 — otherwise you land on "page 3" of
+      // a result set that may only have one page. Reset here rather than in a
+      // second effect, which would be a setState cascade.
+      setQuery((prev) => {
+        const next = search.trim();
+        if (next !== prev) setOffset(0);
+        return next;
+      });
+    }, 300);
+    return () => clearTimeout(id);
+  }, [search]);
 
   useEffect(() => {
     queueMicrotask(() => {
       setState({ kind: "loading" });
       teamsApi
-        .listActivity(token, team.id, { limit: PAGE_SIZE, offset })
+        .listActivity(token, team.id, {
+          q: query || undefined,
+          subjectType: filter === "all" ? undefined : filter,
+          limit: PAGE_SIZE,
+          offset,
+        })
         .then((page) => setState({ kind: "ok", items: page.items, total: page.total }))
         .catch((err: unknown) =>
           setState({
@@ -105,30 +131,15 @@ export function ActivityTab({ team, token }: { team: Team; token: string }) {
           }),
         );
     });
-  }, [token, team.id, offset]);
+  }, [token, team.id, offset, query, filter]);
 
-  if (state.kind === "loading") {
-    return (
-      <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
-        <CircularProgress size={20} />
-        <Typography color="text.secondary">Loading…</Typography>
-      </Stack>
-    );
-  }
-
-  if (state.kind === "error") {
-    return <Alert severity="error">{state.message}</Alert>;
-  }
-
-  // Filtering is client-side over the loaded page: the log is a record, not a
-  // search index, and a page is small.
-  const visible =
-    filter === "all"
-      ? state.items
-      : state.items.filter((a) => a.action.startsWith(`${filter}.`));
-
-  const groups = groupByDay(visible);
-  const shownTo = offset + state.items.length;
+  // Search and filtering happen server-side, over the whole log rather than the
+  // page in hand — the entry you're hunting for is rarely on the page you
+  // happen to be on.
+  const items = state.kind === "ok" ? state.items : [];
+  const total = state.kind === "ok" ? state.total : 0;
+  const groups = groupByDay(items);
+  const shownTo = offset + items.length;
 
   return (
     <Stack spacing={2} sx={{ maxWidth: 860 }}>
@@ -137,13 +148,43 @@ export function ActivityTab({ team, token }: { team: Team; token: string }) {
         edited or deleted — not by anyone, including you.
       </Alert>
 
-      <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        spacing={2}
+        sx={{ alignItems: { sm: "center" } }}
+      >
+        <TextField
+          size="small"
+          placeholder="Search the log…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          sx={{ flexGrow: 1, minWidth: 220 }}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+              ),
+              endAdornment: search ? (
+                <InputAdornment position="end">
+                  <IconButton size="small" aria-label="Clear search" onClick={() => setSearch("")}>
+                    <CloseIcon fontSize="small" />
+                  </IconButton>
+                </InputAdornment>
+              ) : undefined,
+            },
+          }}
+        />
         <TextField
           select
           size="small"
           label="Show"
           value={filter}
-          onChange={(e) => setFilter(e.target.value)}
+          onChange={(e) => {
+            setFilter(e.target.value);
+            setOffset(0);
+          }}
           sx={{ minWidth: 180 }}
         >
           {FILTERS.map((f) => (
@@ -152,17 +193,26 @@ export function ActivityTab({ team, token }: { team: Team; token: string }) {
             </MenuItem>
           ))}
         </TextField>
-        <Typography variant="body2" color="text.secondary">
-          {state.total} {state.total === 1 ? "entry" : "entries"}
+        <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>
+          {state.kind === "loading" ? "…" : `${total} ${total === 1 ? "entry" : "entries"}`}
         </Typography>
       </Stack>
 
-      {visible.length === 0 && (
+      {state.kind === "error" && <Alert severity="error">{state.message}</Alert>}
+
+      {state.kind === "loading" && (
+        <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
+          <CircularProgress size={20} />
+          <Typography color="text.secondary">Loading…</Typography>
+        </Stack>
+      )}
+
+      {state.kind === "ok" && items.length === 0 && (
         <Paper variant="outlined" sx={{ p: 4, textAlign: "center" }}>
           <Typography color="text.secondary">
-            {state.items.length === 0
-              ? "Nothing has happened on this team yet."
-              : "No entries of that kind on this page."}
+            {query || filter !== "all"
+              ? "No entries match that search."
+              : "Nothing has happened on this team yet."}
           </Typography>
         </Paper>
       )}
@@ -220,7 +270,7 @@ export function ActivityTab({ team, token }: { team: Team; token: string }) {
         </Box>
       ))}
 
-      {(offset > 0 || shownTo < state.total) && (
+      {(offset > 0 || shownTo < total) && (
         <Stack direction="row" spacing={1} sx={{ justifyContent: "space-between" }}>
           <Button
             size="small"
@@ -230,11 +280,11 @@ export function ActivityTab({ team, token }: { team: Team; token: string }) {
             Newer
           </Button>
           <Typography variant="caption" color="text.secondary" sx={{ alignSelf: "center" }}>
-            {offset + 1}–{shownTo} of {state.total}
+            {offset + 1}–{shownTo} of {total}
           </Typography>
           <Button
             size="small"
-            disabled={shownTo >= state.total}
+            disabled={shownTo >= total}
             onClick={() => setOffset(offset + PAGE_SIZE)}
           >
             Older
