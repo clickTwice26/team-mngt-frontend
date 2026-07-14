@@ -3,10 +3,12 @@
 
 import { apiClient } from "@/lib/api/client";
 import type { Membership, WorkArrangement } from "@/types/membership";
+import type { MemberPerformance } from "@/types/performance";
 import type { Page, Team, TeamCreate, TeamUpdate } from "@/types/team";
 import type { Task, TaskAttachment, TaskCreate, TaskUpdate } from "@/types/task";
 import type { TaskComment, TaskCommentCreate } from "@/types/task-comment";
 import type { WorkLogCreate, WorkLogEntry, WorkLogUpdate } from "@/types/work-log";
+import type { WorkLogComment, WorkLogCommentCreate } from "@/types/work-log-comment";
 
 const authHeaders = (token: string) => ({ Authorization: `Bearer ${token}` });
 
@@ -53,6 +55,13 @@ export const teamsApi = {
 
   removeMember: (token: string, teamId: string, userId: string) =>
     apiClient.delete<{ message: string }>(`/teams/${teamId}/members/${userId}`, {
+      headers: authHeaders(token),
+    }),
+
+  /** A member's tasks + logged hours on this team. Platform developers only. */
+  getMemberPerformance: (token: string, teamId: string, userId: string) =>
+    apiClient.get<MemberPerformance>(`/teams/${teamId}/members/${userId}/performance`, {
+      cache: "no-store",
       headers: authHeaders(token),
     }),
 
@@ -121,6 +130,37 @@ export const teamsApi = {
     apiClient.patch<WorkLogEntry>(`/teams/${teamId}/work-logs/${entryId}`, payload, {
       headers: authHeaders(token),
     }),
+
+  // --- Work log discussion (the entry's owner + super admins) ---
+
+  listWorkLogComments: (token: string, teamId: string, entryId: string) =>
+    apiClient.get<WorkLogComment[]>(`/teams/${teamId}/work-logs/${entryId}/comments`, {
+      cache: "no-store",
+      headers: authHeaders(token),
+    }),
+
+  createWorkLogComment: (
+    token: string,
+    teamId: string,
+    entryId: string,
+    payload: WorkLogCommentCreate,
+  ) =>
+    apiClient.post<WorkLogComment>(
+      `/teams/${teamId}/work-logs/${entryId}/comments`,
+      payload,
+      { headers: authHeaders(token) },
+    ),
+
+  removeWorkLogComment: (
+    token: string,
+    teamId: string,
+    entryId: string,
+    commentId: string,
+  ) =>
+    apiClient.delete<{ message: string }>(
+      `/teams/${teamId}/work-logs/${entryId}/comments/${commentId}`,
+      { headers: authHeaders(token) },
+    ),
 
   removeWorkLog: (token: string, teamId: string, entryId: string) =>
     apiClient.delete<{ message: string }>(`/teams/${teamId}/work-logs/${entryId}`, {

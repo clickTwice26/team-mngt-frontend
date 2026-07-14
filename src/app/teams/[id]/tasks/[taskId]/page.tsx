@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import NextLink from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import Alert from "@mui/material/Alert";
@@ -9,28 +9,22 @@ import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
-import IconButton from "@mui/material/IconButton";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
-import TextField from "@mui/material/TextField";
-import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
-import CloseIcon from "@mui/icons-material/Close";
-import DeleteIcon from "@mui/icons-material/Delete";
-import ImageIcon from "@mui/icons-material/Image";
-import SendIcon from "@mui/icons-material/Send";
 
 import { AppShell } from "@/components/layout/app-shell";
 import { Markdown } from "@/components/markdown";
 import { useAuth } from "@/context/auth-context";
 import { ApiError } from "@/lib/api/client";
 import { teamsApi } from "@/lib/api/teams";
-import type { Task, TaskAttachment } from "@/types/task";
+import type { Task } from "@/types/task";
 import type { TaskComment } from "@/types/task-comment";
 
 import { AttachmentView } from "../../_components/attachment-view";
+import { CommentThreadList } from "../../_components/comment-thread";
 import {
   PRIORITY_COLORS,
   PRIORITY_LABELS,
@@ -40,21 +34,10 @@ import {
   isOverdue,
 } from "../../_components/task-meta";
 
-const IMAGE_ACCEPT = "image/jpeg,image/png,image/webp,image/gif";
-
 type State =
   | { kind: "loading" }
   | { kind: "ok"; task: Task; comments: TaskComment[] }
   | { kind: "error"; message: string };
-
-function formatTimestamp(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
 
 function initials(name: string | null, email: string): string {
   const source = name?.trim() || email;
@@ -167,35 +150,18 @@ export default function TaskDiscussionPage() {
               </Typography>
             </Box>
 
-            {comments.length === 0 && (
-              <Paper variant="outlined" sx={{ p: 4, textAlign: "center" }}>
-                <Typography color="text.secondary">
-                  No messages yet. Start the discussion below.
-                </Typography>
-              </Paper>
-            )}
-
-            {comments.map((comment) => (
-              <CommentThread
-                key={comment.id}
-                comment={comment}
-                currentUserId={user.id}
-                teamId={teamId}
-                taskId={taskId}
-                token={token!}
-                onChanged={load}
-              />
-            ))}
-
-            <Paper variant="outlined" sx={{ p: 2 }}>
-              <CommentComposer
-                teamId={teamId}
-                taskId={taskId}
-                token={token!}
-                placeholder="Write a message…"
-                onPosted={load}
-              />
-            </Paper>
+            <CommentThreadList
+              comments={comments}
+              currentUserId={user.id}
+              actions={{
+                post: (payload) =>
+                  teamsApi.createTaskComment(token!, teamId, taskId, payload),
+                remove: (commentId) =>
+                  teamsApi.removeTaskComment(token!, teamId, taskId, commentId),
+                upload: (file) => teamsApi.uploadTaskAttachment(token!, teamId, file),
+                reload: load,
+              }}
+            />
           </Stack>
         </Stack>
       </Stack>
@@ -203,304 +169,110 @@ export default function TaskDiscussionPage() {
   );
 }
 
-// --- A top-level comment plus its replies -------------------------------------
+// --- The task, in full --------------------------------------------------------
 
-function CommentThread({
-  comment,
-  currentUserId,
-  teamId,
-  taskId,
-  token,
-  onChanged,
-}: {
-  comment: TaskComment;
-  currentUserId: string;
-  teamId: string;
-  taskId: string;
-  token: string;
-  onChanged: () => void | Promise<void>;
-}) {
-  const [replying, setReplying] = useState(false);
+/** Read-only view of everything on the task. Editing still lives on the tasks
+ *  tab; this panel is context for the discussion beside it. */
+function TaskDetails({ task }: { task: Task }) {
+  const overdue = isOverdue(task);
 
   return (
-    <Paper variant="outlined" sx={{ p: 2 }}>
-      <Stack spacing={1.5}>
-        <CommentBody
-          comment={comment}
-          currentUserId={currentUserId}
-          teamId={teamId}
-          taskId={taskId}
-          token={token}
-          onChanged={onChanged}
-        />
+    <Paper variant="outlined" sx={{ p: 3 }}>
+      <Stack spacing={2}>
+        <Stack spacing={1}>
+          <Typography variant="h5" component="h1" sx={{ fontWeight: 700 }}>
+            {task.title}
+          </Typography>
+          <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1 }}>
+            <Chip
+              size="small"
+              label={PRIORITY_LABELS[task.priority]}
+              color={PRIORITY_COLORS[task.priority]}
+              variant={task.priority === "low" ? "outlined" : "filled"}
+            />
+            <Chip
+              size="small"
+              label={STATUS_LABELS[task.status]}
+              color={STATUS_COLORS[task.status]}
+            />
+          </Stack>
+        </Stack>
 
-        {comment.replies.length > 0 && (
-          <Stack
-            spacing={1.5}
-            sx={{ pl: 2, ml: 1, borderLeft: "2px solid", borderColor: "divider" }}
-          >
-            {comment.replies.map((reply) => (
-              <CommentBody
-                key={reply.id}
-                comment={reply}
-                currentUserId={currentUserId}
-                teamId={teamId}
-                taskId={taskId}
-                token={token}
-                onChanged={onChanged}
-              />
-            ))}
+        {task.deadline && (
+          <Stack direction="row" spacing={0.5} sx={{ alignItems: "center" }}>
+            <CalendarTodayIcon fontSize="inherit" color={overdue ? "error" : "action"} />
+            <Typography
+              variant="caption"
+              color={overdue ? "error" : "text.secondary"}
+              sx={{ fontWeight: overdue ? 600 : 400 }}
+            >
+              Due {formatDeadline(task.deadline)}
+              {overdue ? " · Overdue" : ""}
+            </Typography>
           </Stack>
         )}
 
-        {replying ? (
-          <Box sx={{ pl: 2, ml: 1 }}>
-            <CommentComposer
-              teamId={teamId}
-              taskId={taskId}
-              token={token}
-              parentId={comment.id}
-              placeholder="Write a reply…"
-              autoFocus
-              onCancel={() => setReplying(false)}
-              onPosted={async () => {
-                setReplying(false);
-                await onChanged();
-              }}
-            />
-          </Box>
-        ) : (
+        {task.description && (
           <Box>
-            <Button size="small" onClick={() => setReplying(true)}>
-              Reply
-            </Button>
+            <Typography variant="overline" color="text.secondary">
+              Description
+            </Typography>
+            <Markdown>{task.description}</Markdown>
           </Box>
         )}
+
+        {task.attachments.length > 0 && (
+          <Box>
+            <Typography variant="overline" color="text.secondary">
+              Attachments
+            </Typography>
+            <Stack direction="row" spacing={1.5} sx={{ flexWrap: "wrap", gap: 1.5, mt: 0.5 }}>
+              {task.attachments.map((a) => (
+                <AttachmentView key={a.url} attachment={a} />
+              ))}
+            </Stack>
+          </Box>
+        )}
+
+        <Box>
+          <Typography variant="overline" color="text.secondary">
+            Submitted by
+          </Typography>
+          <Stack direction="row" spacing={1} sx={{ alignItems: "center", mt: 0.5 }}>
+            <Avatar
+              src={task.created_by.avatar_url ?? undefined}
+              sx={{ width: 28, height: 28 }}
+            >
+              {initials(task.created_by.full_name, task.created_by.email)}
+            </Avatar>
+            <Typography variant="body2">
+              {task.created_by.full_name || task.created_by.email}
+            </Typography>
+          </Stack>
+        </Box>
+
+        <Box>
+          <Typography variant="overline" color="text.secondary">
+            Assigned to
+          </Typography>
+          {task.assignees.length === 0 ? (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              Nobody yet.
+            </Typography>
+          ) : (
+            <Stack spacing={1} sx={{ mt: 0.5 }}>
+              {task.assignees.map((a) => (
+                <Stack key={a.id} direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                  <Avatar src={a.avatar_url ?? undefined} sx={{ width: 28, height: 28 }}>
+                    {initials(a.full_name, a.email)}
+                  </Avatar>
+                  <Typography variant="body2">{a.full_name || a.email}</Typography>
+                </Stack>
+              ))}
+            </Stack>
+          )}
+        </Box>
       </Stack>
     </Paper>
-  );
-}
-
-// --- One message --------------------------------------------------------------
-
-function CommentBody({
-  comment,
-  currentUserId,
-  teamId,
-  taskId,
-  token,
-  onChanged,
-}: {
-  comment: TaskComment;
-  currentUserId: string;
-  teamId: string;
-  taskId: string;
-  token: string;
-  onChanged: () => void | Promise<void>;
-}) {
-  const [deleting, setDeleting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const isAuthor = comment.author.id === currentUserId;
-
-  const handleDelete = async () => {
-    setDeleting(true);
-    setError(null);
-    try {
-      await teamsApi.removeTaskComment(token, teamId, taskId, comment.id);
-      await onChanged();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to delete the message.");
-      setDeleting(false);
-    }
-  };
-
-  return (
-    <Stack direction="row" spacing={1.5} sx={{ alignItems: "flex-start" }}>
-      <Avatar src={comment.author.avatar_url ?? undefined} sx={{ width: 32, height: 32 }}>
-        {initials(comment.author.full_name, comment.author.email)}
-      </Avatar>
-      <Stack spacing={0.5} sx={{ flexGrow: 1, minWidth: 0 }}>
-        <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-          <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-            {comment.author.full_name || comment.author.email}
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            {formatTimestamp(comment.created_at)}
-          </Typography>
-          {isAuthor && (
-            <Tooltip title="Delete message">
-              <span>
-                <IconButton
-                  size="small"
-                  disabled={deleting}
-                  aria-label="Delete message"
-                  onClick={() => void handleDelete()}
-                >
-                  <DeleteIcon fontSize="inherit" />
-                </IconButton>
-              </span>
-            </Tooltip>
-          )}
-        </Stack>
-
-        {comment.body && <Markdown>{comment.body}</Markdown>}
-
-        {comment.attachments.length > 0 && (
-          <Stack direction="row" spacing={1.5} sx={{ flexWrap: "wrap", gap: 1.5, pt: 0.5 }}>
-            {comment.attachments.map((a) => (
-              <AttachmentView key={a.url} attachment={a} />
-            ))}
-          </Stack>
-        )}
-
-        {error && <Alert severity="error">{error}</Alert>}
-      </Stack>
-    </Stack>
-  );
-}
-
-// --- Composer (shared by the thread and each reply) ----------------------------
-
-function CommentComposer({
-  teamId,
-  taskId,
-  token,
-  parentId,
-  placeholder,
-  autoFocus,
-  onPosted,
-  onCancel,
-}: {
-  teamId: string;
-  taskId: string;
-  token: string;
-  parentId?: string;
-  placeholder: string;
-  autoFocus?: boolean;
-  onPosted: () => void | Promise<void>;
-  onCancel?: () => void;
-}) {
-  const [body, setBody] = useState("");
-  const [attachments, setAttachments] = useState<TaskAttachment[]>([]);
-  const [uploading, setUploading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const fileInput = useRef<HTMLInputElement>(null);
-
-  // Mirrors the server rule: a message needs text, an image, or both.
-  const canSubmit = (body.trim().length > 0 || attachments.length > 0) && !uploading;
-
-  const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files ?? []);
-    event.target.value = ""; // allow re-picking the same file
-    if (files.length === 0) return;
-    setError(null);
-    setUploading(true);
-    try {
-      for (const file of files) {
-        const uploaded = await teamsApi.uploadTaskAttachment(token, teamId, file);
-        setAttachments((prev) => [...prev, uploaded]);
-      }
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to upload the image.");
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!canSubmit) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      await teamsApi.createTaskComment(token, teamId, taskId, {
-        body: body.trim(),
-        parent_id: parentId ?? null,
-        attachments,
-      });
-      setBody("");
-      setAttachments([]);
-      await onPosted();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to post the message.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <Stack component="form" spacing={1.5} onSubmit={(e) => void handleSubmit(e)}>
-      {error && <Alert severity="error">{error}</Alert>}
-
-      <TextField
-        multiline
-        minRows={2}
-        fullWidth
-        size="small"
-        autoFocus={autoFocus}
-        placeholder={placeholder}
-        value={body}
-        onChange={(e) => setBody(e.target.value)}
-      />
-
-      {attachments.length > 0 && (
-        <Stack direction="row" spacing={1.5} sx={{ flexWrap: "wrap", gap: 1.5 }}>
-          {attachments.map((a) => (
-            <Box key={a.url} sx={{ position: "relative" }}>
-              <AttachmentView attachment={a} />
-              <IconButton
-                size="small"
-                aria-label={`Remove ${a.filename}`}
-                onClick={() => setAttachments((prev) => prev.filter((x) => x.url !== a.url))}
-                sx={{
-                  position: "absolute",
-                  top: 2,
-                  right: 2,
-                  bgcolor: "background.paper",
-                  "&:hover": { bgcolor: "background.paper" },
-                }}
-              >
-                <CloseIcon fontSize="inherit" />
-              </IconButton>
-            </Box>
-          ))}
-        </Stack>
-      )}
-
-      <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-        <input
-          ref={fileInput}
-          type="file"
-          hidden
-          multiple
-          accept={IMAGE_ACCEPT}
-          onChange={(e) => void handleUpload(e)}
-        />
-        <Button
-          size="small"
-          startIcon={uploading ? <CircularProgress size={14} /> : <ImageIcon />}
-          disabled={uploading}
-          onClick={() => fileInput.current?.click()}
-        >
-          {uploading ? "Uploading…" : "Image"}
-        </Button>
-        <Box sx={{ flexGrow: 1 }} />
-        {onCancel && (
-          <Button size="small" onClick={onCancel} disabled={submitting}>
-            Cancel
-          </Button>
-        )}
-        <Button
-          type="submit"
-          size="small"
-          variant="contained"
-          endIcon={<SendIcon />}
-          disabled={!canSubmit || submitting}
-        >
-          {submitting ? "Sending…" : "Send"}
-        </Button>
-      </Stack>
-    </Stack>
   );
 }

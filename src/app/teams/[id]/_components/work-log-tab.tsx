@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import NextLink from "next/link";
 import Alert from "@mui/material/Alert";
 import Badge from "@mui/material/Badge";
 import Box from "@mui/material/Box";
@@ -20,6 +21,7 @@ import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import AddIcon from "@mui/icons-material/Add";
+import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutlineOutlined";
 import CloseIcon from "@mui/icons-material/Close";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
@@ -299,6 +301,16 @@ export function WorkLogTab({
                 )}
               </Box>
               <Stack direction="row" spacing={0.5}>
+                <Tooltip title="Discussion">
+                  <IconButton
+                    size="small"
+                    component={NextLink}
+                    href={`/teams/${team.id}/work-logs/${entry.id}`}
+                    aria-label="Discussion for this entry"
+                  >
+                    <ChatBubbleOutlineIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
                 <IconButton
                   size="small"
                   aria-label="Edit entry"

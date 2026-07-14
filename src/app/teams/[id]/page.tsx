@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
+import NextLink from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Alert from "@mui/material/Alert";
 import Autocomplete from "@mui/material/Autocomplete";
@@ -29,6 +30,7 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
+import InsightsIcon from "@mui/icons-material/Insights";
 import ScheduleIcon from "@mui/icons-material/Schedule";
 
 import { AppShell } from "@/components/layout/app-shell";
@@ -438,6 +440,20 @@ function TeamMembersTab({
                 alignItems="flex-start"
                 secondaryAction={
                   <Stack direction="row" spacing={0.5}>
+                    {canSetWork && (
+                      <Tooltip title="Performance">
+                        <IconButton
+                          edge="end"
+                          component={NextLink}
+                          href={`/teams/${team.id}/members/${membership.user.id}/performance`}
+                          aria-label={`Performance for ${
+                            membership.user.full_name || membership.user.email
+                          }`}
+                        >
+                          <InsightsIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
                     {canSetWork && (
                       <Tooltip title="Set working method">
                         <IconButton
