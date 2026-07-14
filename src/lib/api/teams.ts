@@ -3,6 +3,7 @@
 
 import { apiClient } from "@/lib/api/client";
 import type { Membership, WorkArrangement } from "@/types/membership";
+import type { Activity } from "@/types/activity";
 import type { Meeting, MeetingCreate, MeetingUpdate } from "@/types/meeting";
 import type { MeetingComment, MeetingCommentCreate } from "@/types/meeting-comment";
 import type { MemberPerformance } from "@/types/performance";
@@ -101,6 +102,25 @@ export const teamsApi = {
     const formData = new FormData();
     formData.append("file", file);
     return apiClient.upload<TaskAttachment>(`/teams/${teamId}/tasks/attachments`, formData, {
+      headers: authHeaders(token),
+    });
+  },
+
+  // --- Activity log (founders of the company + the platform developer) ---
+
+  canViewActivity: (token: string, teamId: string) =>
+    apiClient.get<{ can_view: boolean }>(`/teams/${teamId}/activity/access`, {
+      cache: "no-store",
+      headers: authHeaders(token),
+    }),
+
+  listActivity: (token: string, teamId: string, params?: { limit?: number; offset?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.limit != null) query.set("limit", String(params.limit));
+    if (params?.offset != null) query.set("offset", String(params.offset));
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return apiClient.get<Page<Activity>>(`/teams/${teamId}/activity${suffix}`, {
+      cache: "no-store",
       headers: authHeaders(token),
     });
   },

@@ -42,6 +42,7 @@ import type { Membership, MembershipUser } from "@/types/membership";
 import type { Team } from "@/types/team";
 
 import { TasksTab } from "./_components/tasks-tab";
+import { ActivityTab } from "./_components/activity-tab";
 import { MeetingsTab } from "./_components/meetings-tab";
 import { WorkLogTab } from "./_components/work-log-tab";
 import {
@@ -59,7 +60,7 @@ type TeamState =
  *  meaningful (and keeps working if the tab order ever changes). The "hours"
  *  tab only exists for a member working on this team on an hourly basis. */
 const BASE_TABS = ["overview", "members", "tasks"] as const;
-type TabKey = (typeof BASE_TABS)[number] | "hours" | "meetings";
+type TabKey = (typeof BASE_TABS)[number] | "hours" | "meetings" | "logs";
 
 function TeamDetailPageContent() {
   const { id } = useParams<{ id: string }>();
@@ -71,6 +72,9 @@ function TeamDetailPageContent() {
   // The current user's own membership, used to decide whether they log hours
   // here. `undefined` while unknown; `null` if they aren't a member.
   const [myMembership, setMyMembership] = useState<Membership | null | undefined>(undefined);
+  // The server decides who may read the log (founders of the company, plus the
+  // developer). Asking it beats guessing, and means the tab never 403s.
+  const [canViewLogs, setCanViewLogs] = useState(false);
 
   const isHourlyMember = myMembership?.work.mode === "hourly";
   // Anyone on the team can schedule and join a meeting, so the tab is for
@@ -79,6 +83,7 @@ function TeamDetailPageContent() {
     ...BASE_TABS,
     ...(isHourlyMember ? (["hours"] as const) : []),
     "meetings",
+    ...(canViewLogs ? (["logs"] as const) : []),
   ];
 
   // Unknown or missing `?tab=` falls back to Overview rather than rendering
@@ -124,6 +129,11 @@ function TeamDetailPageContent() {
       .listMembers(token, id)
       .then((members) => setMyMembership(members.find((m) => m.user.id === user.id) ?? null))
       .catch(() => setMyMembership(null));
+
+    teamsApi
+      .canViewActivity(token, id)
+      .then((res) => setCanViewLogs(res.can_view))
+      .catch(() => setCanViewLogs(false));
   }, [token, id, user]);
 
   if (authLoading || !user || teamState.kind === "loading") {
@@ -175,6 +185,7 @@ function TeamDetailPageContent() {
           <Tab value="tasks" label="Tasks" />
           {isHourlyMember && <Tab value="hours" label="My Hours" />}
           <Tab value="meetings" label="Meetings" />
+          {canViewLogs && <Tab value="logs" label="Logs" />}
         </Tabs>
 
         {tab === "overview" && (
@@ -202,6 +213,7 @@ function TeamDetailPageContent() {
             isSuperAdmin={user.is_super_admin}
           />
         )}
+        {tab === "logs" && canViewLogs && <ActivityTab team={team} token={token!} />}
         {tab === "meetings" && (
           <MeetingsTab
             team={team}
