@@ -13,9 +13,9 @@ function required(value: string | undefined, name: string): string {
 }
 
 export const env = {
-  /** Base URL of the FastAPI backend, e.g. http://localhost:8000 */
+  /** Base URL of the FastAPI backend, e.g. http://localhost:8417 */
   apiUrl: required(
-    process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000",
+    process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8417",
     "NEXT_PUBLIC_API_URL",
   ),
   apiVersion: process.env.NEXT_PUBLIC_API_VERSION ?? "v1",
