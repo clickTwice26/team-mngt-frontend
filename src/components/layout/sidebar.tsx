@@ -33,7 +33,7 @@ interface NavItem {
 }
 
 const MAIN_NAV_ITEMS: NavItem[] = [
-  { label: "Dashboard", href: "/", icon: <DashboardIcon /> },
+  { label: "Dashboard", href: "/dashboard", icon: <DashboardIcon /> },
   { label: "Teams", href: "/teams", icon: <GroupsIcon /> },
 ];
 

@@ -28,7 +28,7 @@ export default function RegisterPage() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (!loading && isAuthenticated) router.replace("/");
+    if (!loading && isAuthenticated) router.replace("/dashboard");
   }, [loading, isAuthenticated, router]);
 
   const passwordTooShort = password.length > 0 && password.length < 8;
@@ -52,7 +52,7 @@ export default function RegisterPage() {
         password,
         full_name: fullName.trim() || undefined,
       });
-      router.replace("/");
+      router.replace("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed.");
     } finally {
@@ -64,7 +64,7 @@ export default function RegisterPage() {
     setError(null);
     try {
       await loginWithGoogle(idToken);
-      router.replace("/");
+      router.replace("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Google sign-in failed.");
     }

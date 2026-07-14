@@ -26,7 +26,7 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (!loading && isAuthenticated) router.replace("/");
+    if (!loading && isAuthenticated) router.replace("/dashboard");
   }, [loading, isAuthenticated, router]);
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -35,7 +35,7 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       await login({ email, password });
-      router.replace("/");
+      router.replace("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed.");
     } finally {
@@ -47,7 +47,7 @@ export default function LoginPage() {
     setError(null);
     try {
       await loginWithGoogle(idToken);
-      router.replace("/");
+      router.replace("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Google sign-in failed.");
     }

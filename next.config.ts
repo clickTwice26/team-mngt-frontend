@@ -1,8 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Produce a minimal, self-contained server build for Docker images.
-  output: "standalone",
+  // `standalone` produces a self-contained server bundle for a Docker image.
+  // Vercel builds its own output format and doesn't want it — leaving it on
+  // there just makes Next emit a server bundle Vercel then ignores. `VERCEL` is
+  // set automatically in their build environment.
+  output: process.env.VERCEL ? undefined : "standalone",
 
   async headers() {
     return [

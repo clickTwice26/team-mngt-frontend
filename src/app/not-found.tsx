@@ -60,7 +60,7 @@ export default function NotFound() {
   if (isAuthenticated) {
     return (
       <AppShell>
-        <NotFoundBody destination="/" label="Back to Dashboard" />
+        <NotFoundBody destination="/dashboard" label="Back to Dashboard" />
       </AppShell>
     );
   }
