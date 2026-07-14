@@ -21,6 +21,7 @@ import List from "@mui/material/List";
 import ListItem from "@mui/material/ListItem";
 import ListItemAvatar from "@mui/material/ListItemAvatar";
 import ListItemText from "@mui/material/ListItemText";
+import MenuItem from "@mui/material/MenuItem";
 import MuiLink from "@mui/material/Link";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
@@ -47,7 +48,7 @@ import { teamsApi } from "@/lib/api/teams";
 import { usersApi } from "@/lib/api/users";
 import type { User } from "@/types/auth";
 import type { Company } from "@/types/company";
-import type { CompanyMembership } from "@/types/company-membership";
+import type { CompanyMembership, CompanyRole } from "@/types/company-membership";
 import type { Team } from "@/types/team";
 
 type CompanyState =
@@ -148,7 +149,14 @@ export default function CompanyDetailPage() {
           />
         )}
         {tab === 1 && <CompanyTeamsTab companyId={company.id} token={token!} />}
-        {tab === 2 && <CompanyEmployeesTab companyId={company.id} token={token!} />}
+        {tab === 2 && (
+          <CompanyEmployeesTab
+            companyId={company.id}
+            token={token!}
+            // Only a platform developer can set a company role.
+            canSetRole={user.role === "platform_developer"}
+          />
+        )}
       </Stack>
     </AppShell>
   );
@@ -504,8 +512,22 @@ function CompanyTeamsTab({ companyId, token }: { companyId: string; token: strin
 
 // --- Employees -------------------------------------------------------------------
 
-function CompanyEmployeesTab({ companyId, token }: { companyId: string; token: string }) {
+const COMPANY_ROLES: { value: CompanyRole; label: string }[] = [
+  { value: "employee", label: "Employee" },
+  { value: "founder", label: "Founder" },
+];
+
+function CompanyEmployeesTab({
+  companyId,
+  token,
+  canSetRole,
+}: {
+  companyId: string;
+  token: string;
+  canSetRole: boolean;
+}) {
   const [employees, setEmployees] = useState<CompanyMembership[]>([]);
+  const [savingRole, setSavingRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -562,6 +584,21 @@ function CompanyEmployeesTab({ companyId, token }: { companyId: string; token: s
     }
   };
 
+  const handleRoleChange = async (userId: string, role: CompanyRole) => {
+    setSavingRole(userId);
+    setError(null);
+    try {
+      const updated = await companiesApi.setEmployeeRole(token, companyId, userId, role);
+      // Patch in place rather than refetching the whole list — the row keeps
+      // its position instead of flickering.
+      setEmployees((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to set the role.");
+    } finally {
+      setSavingRole(null);
+    }
+  };
+
   const handleRemove = async (userId: string) => {
     try {
       await companiesApi.removeEmployee(token, companyId, userId);
@@ -603,13 +640,44 @@ function CompanyEmployeesTab({ companyId, token }: { companyId: string; token: s
               <ListItem
                 key={membership.id}
                 secondaryAction={
-                  <IconButton
-                    edge="end"
-                    aria-label="Remove employee"
-                    onClick={() => void handleRemove(membership.user.id)}
-                  >
-                    <DeleteIcon fontSize="small" />
-                  </IconButton>
+                  <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                    {canSetRole ? (
+                      <TextField
+                        select
+                        size="small"
+                        label="Role"
+                        value={membership.role}
+                        disabled={savingRole === membership.user.id}
+                        onChange={(e) =>
+                          void handleRoleChange(
+                            membership.user.id,
+                            e.target.value as CompanyRole,
+                          )
+                        }
+                        sx={{ minWidth: 140 }}
+                      >
+                        {COMPANY_ROLES.map((r) => (
+                          <MenuItem key={r.value} value={r.value}>
+                            {r.label}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                    ) : (
+                      <Chip
+                        size="small"
+                        label={membership.role === "founder" ? "Founder" : "Employee"}
+                        color={membership.role === "founder" ? "primary" : "default"}
+                        variant={membership.role === "founder" ? "filled" : "outlined"}
+                      />
+                    )}
+                    <IconButton
+                      edge="end"
+                      aria-label="Remove employee"
+                      onClick={() => void handleRemove(membership.user.id)}
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Stack>
                 }
               >
                 <ListItemAvatar>

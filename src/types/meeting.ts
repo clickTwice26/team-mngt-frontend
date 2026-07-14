@@ -14,6 +14,8 @@ export interface Meeting {
   topics: string[];
   meet_link: string | null;
   notes: string | null;
+  /** Who's expected. Empty means the whole team. */
+  attendees: MembershipUser[];
   attachments: TaskAttachment[];
   created_by: MembershipUser;
   created_at: string;
@@ -26,6 +28,7 @@ export interface MeetingCreate {
   topics?: string[];
   meet_link?: string | null;
   notes?: string | null;
+  attendee_ids?: string[];
   attachments?: TaskAttachment[];
 }
 

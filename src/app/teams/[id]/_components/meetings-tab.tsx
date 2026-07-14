@@ -3,6 +3,9 @@
 import { useEffect, useState } from "react";
 import NextLink from "next/link";
 import Alert from "@mui/material/Alert";
+import Autocomplete from "@mui/material/Autocomplete";
+import Avatar from "@mui/material/Avatar";
+import AvatarGroup from "@mui/material/AvatarGroup";
 import Badge from "@mui/material/Badge";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -37,6 +40,7 @@ import { ApiError } from "@/lib/api/client";
 import { teamsApi } from "@/lib/api/teams";
 
 import { meetingStatus, useNow } from "./meeting-status";
+import type { Membership, MembershipUser } from "@/types/membership";
 import type { Meeting } from "@/types/meeting";
 import type { TaskAttachment } from "@/types/task";
 import type { Team } from "@/types/team";
@@ -136,19 +140,22 @@ export function MeetingsTab({
   team,
   token,
   currentUserId,
-  isSuperAdmin,
+  isDeveloper,
 }: {
   team: Team;
   token: string;
   currentUserId: string;
-  isSuperAdmin: boolean;
+  /** Platform developer — the only override on someone else's meeting. */
+  isDeveloper: boolean;
 }) {
-  // Anyone on the team can call a meeting; only its organiser (or a super
-  // admin) can move or cancel one others are planning around.
+  // Anyone on the team can call a meeting; only its organiser (or the platform
+  // developer) can move or cancel one others are planning around. Mirrors
+  // MeetingService._ensure_can_manage.
   const canManage = (meeting: Meeting) =>
-    isSuperAdmin || meeting.created_by.id === currentUserId;
+    isDeveloper || meeting.created_by.id === currentUserId;
   const now = useNow();
   const [state, setState] = useState<State>({ kind: "loading" });
+  const [members, setMembers] = useState<MembershipUser[]>([]);
   const [selectedDate, setSelectedDate] = useState<Dayjs>(dayjs().startOf("day"));
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Meeting | null>(null);
@@ -170,6 +177,11 @@ export function MeetingsTab({
 
   useEffect(() => {
     queueMicrotask(load);
+    // The attendee picker offers the team's members.
+    teamsApi
+      .listMembers(token, team.id)
+      .then((rows: Membership[]) => setMembers(rows.map((m) => m.user)))
+      .catch(() => setMembers([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, team.id]);
 
@@ -316,6 +328,23 @@ export function MeetingsTab({
                 </Box>
               )}
 
+              {meeting.attendees.length > 0 && (
+                <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                  <AvatarGroup max={5} sx={{ "& .MuiAvatar-root": { width: 24, height: 24, fontSize: 12 } }}>
+                    {meeting.attendees.map((a) => (
+                      <Tooltip key={a.id} title={a.full_name || a.email}>
+                        <Avatar src={a.avatar_url ?? undefined}>
+                          {(a.full_name || a.email).charAt(0).toUpperCase()}
+                        </Avatar>
+                      </Tooltip>
+                    ))}
+                  </AvatarGroup>
+                  <Typography variant="caption" color="text.secondary">
+                    {meeting.attendees.length} invited
+                  </Typography>
+                </Stack>
+              )}
+
               <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1 }}>
                 <MeetingJoinButton meeting={meeting} now={now} />
                 {meeting.attachments.length > 0 && (
@@ -359,6 +388,7 @@ export function MeetingsTab({
           teamId={team.id}
           token={token}
           meeting={editing}
+          members={members}
           defaultDate={selectedDate}
           onClose={() => setDialogOpen(false)}
           onSaved={(savedOn) => {
@@ -397,6 +427,7 @@ function MeetingDialog({
   teamId,
   token,
   meeting,
+  members,
   defaultDate,
   onClose,
   onSaved,
@@ -404,6 +435,7 @@ function MeetingDialog({
   teamId: string;
   token: string;
   meeting: Meeting | null;
+  members: MembershipUser[];
   defaultDate: Dayjs;
   onClose: () => void;
   onSaved: (savedOn: Dayjs) => void;
@@ -420,6 +452,7 @@ function MeetingDialog({
   const [topics, setTopics] = useState((meeting?.topics ?? []).join("\n"));
   const [meetLink, setMeetLink] = useState(meeting?.meet_link ?? "");
   const [notes, setNotes] = useState(meeting?.notes ?? "");
+  const [attendees, setAttendees] = useState<MembershipUser[]>(meeting?.attendees ?? []);
   const [attachments, setAttachments] = useState<TaskAttachment[]>(
     meeting?.attachments ?? [],
   );
@@ -454,6 +487,7 @@ function MeetingDialog({
           .filter(Boolean),
         meet_link: meetLink.trim() || null,
         notes: notes.trim() || null,
+        attendee_ids: attendees.map((a) => a.id),
         attachments,
       };
       if (meeting) {
@@ -526,6 +560,23 @@ function MeetingDialog({
               error={linkInvalid}
               helperText={linkInvalid ? "Must start with http:// or https://" : " "}
               fullWidth
+            />
+
+            <Autocomplete
+              multiple
+              options={members}
+              value={attendees}
+              onChange={(_, value) => setAttendees(value)}
+              getOptionLabel={(option) => option.full_name || option.email}
+              isOptionEqualToValue={(option, value) => option.id === value.id}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Attendees"
+                  placeholder="Team members"
+                  helperText="Leave empty to invite the whole team."
+                />
+              )}
             />
 
             <TextField

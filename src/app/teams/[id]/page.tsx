@@ -207,7 +207,7 @@ function TeamDetailPageContent() {
             team={team}
             token={token!}
             currentUserId={user.id}
-            isSuperAdmin={user.is_super_admin}
+            isDeveloper={user.role === "platform_developer"}
           />
         )}
         {tab === "hours" && isHourlyMember && myMembership && (

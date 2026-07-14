@@ -13,7 +13,6 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import ScheduleIcon from "@mui/icons-material/Schedule";
-import VideocamIcon from "@mui/icons-material/Videocam";
 import dayjs from "dayjs";
 
 import { AppShell } from "@/components/layout/app-shell";
@@ -188,6 +187,33 @@ export default function MeetingPage() {
                     </Stack>
                   </Box>
                 )}
+
+                <Box>
+                  <Typography variant="overline" color="text.secondary">
+                    Attendees
+                  </Typography>
+                  {meeting.attendees.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                      The whole team is invited.
+                    </Typography>
+                  ) : (
+                    <Stack spacing={1} sx={{ mt: 0.5 }}>
+                      {meeting.attendees.map((a) => (
+                        <Stack
+                          key={a.id}
+                          direction="row"
+                          spacing={1}
+                          sx={{ alignItems: "center" }}
+                        >
+                          <Avatar src={a.avatar_url ?? undefined} sx={{ width: 28, height: 28 }}>
+                            {(a.full_name || a.email).charAt(0).toUpperCase()}
+                          </Avatar>
+                          <Typography variant="body2">{a.full_name || a.email}</Typography>
+                        </Stack>
+                      ))}
+                    </Stack>
+                  )}
+                </Box>
 
                 <Box>
                   <Typography variant="overline" color="text.secondary">

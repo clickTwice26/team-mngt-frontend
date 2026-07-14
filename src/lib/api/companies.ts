@@ -2,7 +2,7 @@
  * (all require authentication). */
 
 import { apiClient } from "@/lib/api/client";
-import type { CompanyMembership } from "@/types/company-membership";
+import type { CompanyMembership, CompanyRole } from "@/types/company-membership";
 import type { Company, CompanyCreate, CompanyUpdate } from "@/types/company";
 import type { Page } from "@/types/team";
 
@@ -47,6 +47,19 @@ export const companiesApi = {
     apiClient.post<CompanyMembership>(
       `/companies/${companyId}/employees`,
       { user_id: userId },
+      { headers: authHeaders(token) },
+    ),
+
+  /** Set an employee's role in the company. Platform developers only. */
+  setEmployeeRole: (
+    token: string,
+    companyId: string,
+    userId: string,
+    role: CompanyRole,
+  ) =>
+    apiClient.put<CompanyMembership>(
+      `/companies/${companyId}/employees/${userId}/role`,
+      { role },
       { headers: authHeaders(token) },
     ),
 
