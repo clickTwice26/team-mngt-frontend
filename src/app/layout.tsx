@@ -8,7 +8,7 @@ import { AuthProvider } from "@/context/auth-context";
 import theme, { googleSans } from "@/theme";
 
 export const metadata: Metadata = {
-  title: "Team Management",
+  title: "TeamUp",
   description: "FastAPI + MongoDB + Next.js — Material UI frontend",
 };
 

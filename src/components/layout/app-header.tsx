@@ -29,7 +29,7 @@ export function AppHeader({ onMenuClick }: Props) {
         </IconButton>
         <GroupsIcon sx={{ mr: 1.5, display: { xs: "none", sm: "block" } }} />
         <Typography variant="h6" component="div" noWrap sx={{ flexGrow: 1 }}>
-          Team Management
+          TeamUp
         </Typography>
         <AuthNav />
       </Toolbar>

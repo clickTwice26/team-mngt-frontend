@@ -76,7 +76,7 @@ export default function Home() {
             noWrap
             sx={{ flexGrow: 1, color: "text.primary", textDecoration: "none" }}
           >
-            Team Management
+            TeamUp
           </Typography>
           {loading ? (
             <Skeleton variant="rounded" width={150} height={36} />
@@ -111,7 +111,7 @@ export default function Home() {
           <Stack spacing={6}>
             <Stack spacing={3} sx={{ textAlign: { xs: "left", sm: "center" } }}>
               <Box>
-                <Chip label="Team Management" color="secondary" size="small" />
+                <Chip label="Team collaboration, simplified" color="secondary" size="small" />
               </Box>
               <Typography variant="h2" component="h1" sx={{ fontWeight: 700 }}>
                 Run your teams, not your spreadsheets.
@@ -181,7 +181,7 @@ export default function Home() {
       <Box component="footer" sx={{ py: 3 }}>
         <Container maxWidth="md">
           <Typography variant="body2" color="text.secondary" align="center">
-            Team Management — FastAPI · MongoDB · Next.js
+            TeamUp — FastAPI · MongoDB · Next.js
           </Typography>
         </Container>
       </Box>
