@@ -44,6 +44,7 @@ import type { Team } from "@/types/team";
 
 import { TasksTab } from "./_components/tasks-tab";
 import { ActivityTab } from "./_components/activity-tab";
+import { DiscussionTab } from "./_components/discussion-tab";
 import { MeetingsTab } from "./_components/meetings-tab";
 import { WorkLogTab } from "./_components/work-log-tab";
 import {
@@ -61,7 +62,7 @@ type TeamState =
  *  meaningful (and keeps working if the tab order ever changes). The "hours"
  *  tab only exists for a member working on this team on an hourly basis. */
 const BASE_TABS = ["overview", "members", "tasks"] as const;
-type TabKey = (typeof BASE_TABS)[number] | "hours" | "meetings" | "logs";
+type TabKey = (typeof BASE_TABS)[number] | "hours" | "meetings" | "discussion" | "logs";
 
 function TeamDetailPageContent() {
   const { id } = useParams<{ id: string }>();
@@ -84,6 +85,8 @@ function TeamDetailPageContent() {
     ...BASE_TABS,
     ...(isHourlyMember ? (["hours"] as const) : []),
     "meetings",
+    // The discussion is the whole team's, so like Meetings it is for everyone.
+    "discussion",
     ...(canViewLogs ? (["logs"] as const) : []),
   ];
 
@@ -186,6 +189,7 @@ function TeamDetailPageContent() {
           <Tab value="tasks" label="Tasks" />
           {isHourlyMember && <Tab value="hours" label="My Hours" />}
           <Tab value="meetings" label="Meetings" />
+          <Tab value="discussion" label="Discussion" />
           {canViewLogs && <Tab value="logs" label="Logs" />}
         </Tabs>
 
@@ -216,6 +220,9 @@ function TeamDetailPageContent() {
             currentUserId={user.id}
             isSuperAdmin={user.is_super_admin}
           />
+        )}
+        {tab === "discussion" && (
+          <DiscussionTab team={team} token={token!} currentUserId={user.id} />
         )}
         {tab === "logs" && canViewLogs && <ActivityTab team={team} token={token!} />}
         {tab === "meetings" && (

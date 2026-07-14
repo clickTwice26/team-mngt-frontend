@@ -5,17 +5,20 @@ import Alert from "@mui/material/Alert";
 import Avatar from "@mui/material/Avatar";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import Chip from "@mui/material/Chip";
 import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
 import DialogContentText from "@mui/material/DialogContentText";
 import DialogTitle from "@mui/material/DialogTitle";
 import IconButton from "@mui/material/IconButton";
+import Menu from "@mui/material/Menu";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
+import AddReactionIcon from "@mui/icons-material/AddReactionOutlined";
 import DeleteIcon from "@mui/icons-material/Delete";
 import SendIcon from "@mui/icons-material/Send";
 
@@ -36,6 +39,8 @@ export interface ThreadComment {
   parent_id: string | null;
   attachments: TaskAttachment[];
   replies: ThreadComment[];
+  /** Emoji -> ids of everyone who reacted. Absent on threads without reactions. */
+  reactions?: Record<string, string[]>;
   created_at: string;
   /** ISO instant after which the author can no longer delete this message. */
   deletable_until: string;
@@ -54,6 +59,10 @@ export interface ThreadActions {
   upload: (file: File) => Promise<TaskAttachment>;
   /** Refetch after a post or delete. */
   reload: () => void | Promise<void>;
+  /** Add or take back the current user's reaction. Omitted by threads that
+   *  don't have reactions (task, work log, meeting) — the UI hides them then,
+   *  rather than offering a button with nothing behind it. */
+  react?: (commentId: string, emoji: string, add: boolean) => Promise<unknown>;
 }
 
 function formatTimestamp(iso: string): string {
@@ -111,12 +120,20 @@ export function CommentThreadList({
   actions,
   emptyText = "No messages yet. Start the discussion below.",
   placeholder = "Write a message…",
+  submitOnEnter = false,
+  reactionChoices,
 }: {
   comments: ThreadComment[];
   currentUserId: string;
   actions: ThreadActions;
   emptyText?: string;
   placeholder?: string;
+  /** Chat-style: Enter sends, Shift+Enter starts a new line. Off by default —
+   *  a task comment is written more like a paragraph than a chat line, and
+   *  there Enter should do what it does in any other text box. */
+  submitOnEnter?: boolean;
+  /** The emoji offered on each message. Omit to hide reactions entirely. */
+  reactionChoices?: readonly string[];
 }) {
   return (
     <>
@@ -132,11 +149,17 @@ export function CommentThreadList({
           comment={comment}
           currentUserId={currentUserId}
           actions={actions}
+          submitOnEnter={submitOnEnter}
+          reactionChoices={reactionChoices}
         />
       ))}
 
       <Paper variant="outlined" sx={{ p: 2 }}>
-        <CommentComposer actions={actions} placeholder={placeholder} />
+        <CommentComposer
+          actions={actions}
+          placeholder={placeholder}
+          submitOnEnter={submitOnEnter}
+        />
       </Paper>
     </>
   );
@@ -148,17 +171,26 @@ function CommentThread({
   comment,
   currentUserId,
   actions,
+  submitOnEnter,
+  reactionChoices,
 }: {
   comment: ThreadComment;
   currentUserId: string;
   actions: ThreadActions;
+  submitOnEnter: boolean;
+  reactionChoices?: readonly string[];
 }) {
   const [replying, setReplying] = useState(false);
 
   return (
     <Paper variant="outlined" sx={{ p: 2 }}>
       <Stack spacing={1.5}>
-        <CommentBody comment={comment} currentUserId={currentUserId} actions={actions} />
+        <CommentBody
+          comment={comment}
+          currentUserId={currentUserId}
+          actions={actions}
+          reactionChoices={reactionChoices}
+        />
 
         {comment.replies.length > 0 && (
           <Stack
@@ -171,6 +203,7 @@ function CommentThread({
                 comment={reply}
                 currentUserId={currentUserId}
                 actions={actions}
+                reactionChoices={reactionChoices}
               />
             ))}
           </Stack>
@@ -183,6 +216,7 @@ function CommentThread({
               parentId={comment.id}
               placeholder="Write a reply…"
               autoFocus
+              submitOnEnter={submitOnEnter}
               onCancel={() => setReplying(false)}
               onPosted={() => setReplying(false)}
             />
@@ -199,16 +233,107 @@ function CommentThread({
   );
 }
 
+// --- Reactions ----------------------------------------------------------------
+
+function ReactionBar({
+  comment,
+  currentUserId,
+  choices,
+  react,
+}: {
+  comment: ThreadComment;
+  currentUserId: string;
+  choices: readonly string[];
+  react: NonNullable<ThreadActions["react"]>;
+}) {
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const reactions = comment.reactions ?? {};
+  // Ordered by `choices`, not by whatever order the server's object happens to
+  // have — so a reaction doesn't jump around as counts change.
+  const present = choices.filter((emoji) => (reactions[emoji]?.length ?? 0) > 0);
+
+  const toggle = async (emoji: string) => {
+    const mine = (reactions[emoji] ?? []).includes(currentUserId);
+    setAnchor(null);
+    setBusy(emoji);
+    setError(null);
+    try {
+      await react(comment.id, emoji, !mine);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to react.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <Stack spacing={0.5} sx={{ pt: 0.5 }}>
+      <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.5, alignItems: "center" }}>
+        {present.map((emoji) => {
+          const who = reactions[emoji] ?? [];
+          const mine = who.includes(currentUserId);
+          return (
+            <Chip
+              key={emoji}
+              size="small"
+              label={`${emoji} ${who.length}`}
+              // Filled = you're in this count, so clicking takes it back.
+              variant={mine ? "filled" : "outlined"}
+              color={mine ? "primary" : "default"}
+              disabled={busy === emoji}
+              onClick={() => void toggle(emoji)}
+            />
+          );
+        })}
+
+        <Tooltip title="Add a reaction">
+          <IconButton
+            size="small"
+            aria-label="Add a reaction"
+            onClick={(e) => setAnchor(e.currentTarget)}
+          >
+            <AddReactionIcon fontSize="inherit" />
+          </IconButton>
+        </Tooltip>
+      </Stack>
+
+      <Menu anchorEl={anchor} open={anchor !== null} onClose={() => setAnchor(null)}>
+        <Stack direction="row" sx={{ px: 1, gap: 0.25 }}>
+          {choices.map((emoji) => (
+            <IconButton
+              key={emoji}
+              size="small"
+              aria-label={`React with ${emoji}`}
+              onClick={() => void toggle(emoji)}
+            >
+              <Box component="span" sx={{ fontSize: 20, lineHeight: 1 }}>
+                {emoji}
+              </Box>
+            </IconButton>
+          ))}
+        </Stack>
+      </Menu>
+
+      {error && <Alert severity="error">{error}</Alert>}
+    </Stack>
+  );
+}
+
 // --- One message --------------------------------------------------------------
 
 function CommentBody({
   comment,
   currentUserId,
   actions,
+  reactionChoices,
 }: {
   comment: ThreadComment;
   currentUserId: string;
   actions: ThreadActions;
+  reactionChoices?: readonly string[];
 }) {
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -290,6 +415,15 @@ function CommentBody({
           </Stack>
         )}
 
+        {reactionChoices && actions.react && (
+          <ReactionBar
+            comment={comment}
+            currentUserId={currentUserId}
+            choices={reactionChoices}
+            react={actions.react}
+          />
+        )}
+
         {error && <Alert severity="error">{error}</Alert>}
 
         <Dialog open={confirming} onClose={() => !deleting && setConfirming(false)}>
@@ -339,6 +473,7 @@ function CommentComposer({
   parentId,
   placeholder,
   autoFocus,
+  submitOnEnter = false,
   onCancel,
   onPosted,
 }: {
@@ -346,6 +481,7 @@ function CommentComposer({
   parentId?: string;
   placeholder: string;
   autoFocus?: boolean;
+  submitOnEnter?: boolean;
   onCancel?: () => void;
   onPosted?: () => void;
 }) {
@@ -358,9 +494,8 @@ function CommentComposer({
   // Mirrors the server rule: a message needs text, an attachment, or both.
   const canSubmit = (body.trim().length > 0 || attachments.length > 0) && !uploading;
 
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!canSubmit) return;
+  const submit = async () => {
+    if (!canSubmit || submitting) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -380,8 +515,28 @@ function CommentComposer({
     }
   };
 
+  const handleKeyDown = (event: React.KeyboardEvent) => {
+    if (!submitOnEnter || event.key !== "Enter") return;
+    // Shift+Enter is how you get a new line once Enter means "send".
+    if (event.shiftKey) return;
+    // An IME (Bangla, Japanese, Chinese…) uses Enter to accept the candidate
+    // word it is composing. Sending on that would post a half-typed word and
+    // swallow the keystroke the writer meant for the IME.
+    if (event.nativeEvent.isComposing) return;
+
+    event.preventDefault();
+    void submit();
+  };
+
   return (
-    <Stack component="form" spacing={1.5} onSubmit={(e) => void handleSubmit(e)}>
+    <Stack
+      component="form"
+      spacing={1.5}
+      onSubmit={(e) => {
+        e.preventDefault();
+        void submit();
+      }}
+    >
       {error && <Alert severity="error">{error}</Alert>}
 
       <TextField
@@ -393,6 +548,8 @@ function CommentComposer({
         placeholder={placeholder}
         value={body}
         onChange={(e) => setBody(e.target.value)}
+        onKeyDown={handleKeyDown}
+        helperText={submitOnEnter ? "Enter to send · Shift+Enter for a new line" : undefined}
       />
 
       <AttachmentPicker

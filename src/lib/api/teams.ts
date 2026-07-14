@@ -10,6 +10,7 @@ import type { MemberPerformance } from "@/types/performance";
 import type { Page, Team, TeamCreate, TeamUpdate } from "@/types/team";
 import type { Task, TaskAttachment, TaskCreate, TaskUpdate } from "@/types/task";
 import type { TaskComment, TaskCommentCreate } from "@/types/task-comment";
+import type { TeamMessage, TeamMessageCreate } from "@/types/team-message";
 import type { WorkLogCreate, WorkLogEntry, WorkLogUpdate } from "@/types/work-log";
 import type { WorkLogComment, WorkLogCommentCreate } from "@/types/work-log-comment";
 
@@ -297,4 +298,63 @@ export const teamsApi = {
       `/teams/${teamId}/tasks/${taskId}/comments/${commentId}`,
       { headers: authHeaders(token) },
     ),
+
+  // --- Team discussion ---
+  // Writes go over HTTP, exactly like every other thread. The WebSocket
+  // (useDiscussionSocket) only pushes what was written — it accepts nothing.
+
+  listDiscussionMessages: (token: string, teamId: string) =>
+    apiClient.get<TeamMessage[]>(`/teams/${teamId}/discussion/messages`, {
+      cache: "no-store",
+      headers: authHeaders(token),
+    }),
+
+  createDiscussionMessage: (
+    token: string,
+    teamId: string,
+    payload: TeamMessageCreate,
+  ) =>
+    apiClient.post<TeamMessage>(`/teams/${teamId}/discussion/messages`, payload, {
+      headers: authHeaders(token),
+    }),
+
+  removeDiscussionMessage: (token: string, teamId: string, messageId: string) =>
+    apiClient.delete<{ message: string }>(
+      `/teams/${teamId}/discussion/messages/${messageId}`,
+      { headers: authHeaders(token) },
+    ),
+
+  addDiscussionReaction: (
+    token: string,
+    teamId: string,
+    messageId: string,
+    emoji: string,
+  ) =>
+    apiClient.put<TeamMessage>(
+      // Encoded: an emoji in a path segment has to survive the URL.
+      `/teams/${teamId}/discussion/messages/${messageId}/reactions/${encodeURIComponent(emoji)}`,
+      undefined,
+      { headers: authHeaders(token) },
+    ),
+
+  removeDiscussionReaction: (
+    token: string,
+    teamId: string,
+    messageId: string,
+    emoji: string,
+  ) =>
+    apiClient.delete<TeamMessage>(
+      `/teams/${teamId}/discussion/messages/${messageId}/reactions/${encodeURIComponent(emoji)}`,
+      { headers: authHeaders(token) },
+    ),
+
+  uploadDiscussionAttachment: (token: string, teamId: string, file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return apiClient.upload<TaskAttachment>(
+      `/teams/${teamId}/discussion/attachments`,
+      formData,
+      { headers: authHeaders(token) },
+    );
+  },
 };

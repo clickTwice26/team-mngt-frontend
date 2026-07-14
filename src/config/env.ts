@@ -34,3 +34,10 @@ export const env = {
 } as const;
 
 export const apiBaseUrl = `${env.apiUrl}/api/${env.apiVersion}`;
+
+/**
+ * The same base, on the WebSocket scheme — `http` → `ws`, `https` → `wss`, so a
+ * page served over TLS never opens a plaintext socket (browsers block it, and
+ * rightly).
+ */
+export const wsBaseUrl = apiBaseUrl.replace(/^http/, "ws");

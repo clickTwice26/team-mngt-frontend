@@ -71,6 +71,7 @@ const FILTERS: { value: string; label: string }[] = [
   { value: "member", label: "Members" },
   { value: "team", label: "Team" },
   { value: "comment", label: "Comments" },
+  { value: "discussion", label: "Discussion" },
 ];
 
 /** Group entries under the day they happened. */
