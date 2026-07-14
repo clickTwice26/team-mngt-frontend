@@ -16,6 +16,7 @@ import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
 import CloseIcon from "@mui/icons-material/Close";
 import DeleteIcon from "@mui/icons-material/Delete";
 import ImageIcon from "@mui/icons-material/Image";
@@ -30,6 +31,14 @@ import type { Task, TaskAttachment } from "@/types/task";
 import type { TaskComment } from "@/types/task-comment";
 
 import { AttachmentView } from "../../_components/attachment-view";
+import {
+  PRIORITY_COLORS,
+  PRIORITY_LABELS,
+  STATUS_COLORS,
+  STATUS_LABELS,
+  formatDeadline,
+  isOverdue,
+} from "../../_components/task-meta";
 
 const IMAGE_ACCEPT = "image/jpeg,image/png,image/webp,image/gif";
 
@@ -129,7 +138,7 @@ export default function TaskDiscussionPage() {
 
   return (
     <AppShell>
-      <Stack spacing={3} sx={{ maxWidth: 720 }}>
+      <Stack spacing={3} sx={{ maxWidth: 1200 }}>
         <Box>
           <Button
             component={NextLink}
@@ -141,56 +150,54 @@ export default function TaskDiscussionPage() {
           </Button>
         </Box>
 
-        <Stack spacing={1}>
-          <Typography variant="h5" component="h1" sx={{ fontWeight: 700 }}>
-            {task.title}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Discussion between the submitter and the assignees.
-          </Typography>
-          <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1, pt: 0.5 }}>
-            <Chip
-              size="small"
-              variant="outlined"
-              label={`Submitted by ${task.created_by.full_name || task.created_by.email}`}
-            />
-            {task.assignees.map((a) => (
-              <Chip key={a.id} size="small" label={a.full_name || a.email} />
+        <Stack direction={{ xs: "column", md: "row" }} spacing={3} sx={{ alignItems: "flex-start" }}>
+          {/* --- Left: the task itself ---------------------------------------- */}
+          <Box sx={{ flex: 1, minWidth: 0, width: "100%" }}>
+            <TaskDetails task={task} />
+          </Box>
+
+          {/* --- Right: the discussion ---------------------------------------- */}
+          <Stack spacing={2} sx={{ flex: 1, minWidth: 0, width: "100%" }}>
+            <Box>
+              <Typography variant="h6" component="h2" sx={{ fontWeight: 600 }}>
+                Discussion
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Between the submitter and the assignees.
+              </Typography>
+            </Box>
+
+            {comments.length === 0 && (
+              <Paper variant="outlined" sx={{ p: 4, textAlign: "center" }}>
+                <Typography color="text.secondary">
+                  No messages yet. Start the discussion below.
+                </Typography>
+              </Paper>
+            )}
+
+            {comments.map((comment) => (
+              <CommentThread
+                key={comment.id}
+                comment={comment}
+                currentUserId={user.id}
+                teamId={teamId}
+                taskId={taskId}
+                token={token!}
+                onChanged={load}
+              />
             ))}
+
+            <Paper variant="outlined" sx={{ p: 2 }}>
+              <CommentComposer
+                teamId={teamId}
+                taskId={taskId}
+                token={token!}
+                placeholder="Write a message…"
+                onPosted={load}
+              />
+            </Paper>
           </Stack>
         </Stack>
-
-        {comments.length === 0 && (
-          <Paper variant="outlined" sx={{ p: 4, textAlign: "center" }}>
-            <Typography color="text.secondary">
-              No messages yet. Start the discussion below.
-            </Typography>
-          </Paper>
-        )}
-
-        <Stack spacing={2}>
-          {comments.map((comment) => (
-            <CommentThread
-              key={comment.id}
-              comment={comment}
-              currentUserId={user.id}
-              teamId={teamId}
-              taskId={taskId}
-              token={token!}
-              onChanged={load}
-            />
-          ))}
-        </Stack>
-
-        <Paper variant="outlined" sx={{ p: 2 }}>
-          <CommentComposer
-            teamId={teamId}
-            taskId={taskId}
-            token={token!}
-            placeholder="Write a message…"
-            onPosted={load}
-          />
-        </Paper>
       </Stack>
     </AppShell>
   );

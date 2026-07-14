@@ -1,5 +1,7 @@
 /** Domain types mirroring the backend API contract (schemas/work_log.py). */
 
+import type { TaskAttachment } from "@/types/task";
+
 export interface WorkLogEntry {
   id: string;
   team_id: string;
@@ -12,6 +14,8 @@ export interface WorkLogEntry {
   task_id: string | null;
   /** Denormalised title of the linked task, if any. */
   task_title: string | null;
+  /** Any number of images, at most one video (enforced by the server). */
+  attachments: TaskAttachment[];
   created_at: string;
 }
 
@@ -20,6 +24,7 @@ export interface WorkLogCreate {
   ended_at: string;
   description: string;
   task_id?: string | null;
+  attachments?: TaskAttachment[];
 }
 
 export interface WorkLogUpdate {
@@ -27,4 +32,5 @@ export interface WorkLogUpdate {
   ended_at?: string;
   description?: string;
   task_id?: string | null;
+  attachments?: TaskAttachment[];
 }

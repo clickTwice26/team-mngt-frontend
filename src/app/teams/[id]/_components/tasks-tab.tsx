@@ -41,35 +41,17 @@ import { ApiError } from "@/lib/api/client";
 import { teamsApi } from "@/lib/api/teams";
 
 import { AttachmentView } from "./attachment-view";
+import {
+  PRIORITY_COLORS,
+  PRIORITY_LABELS,
+  STATUS_COLORS,
+  STATUS_LABELS,
+  formatDeadline,
+  isOverdue,
+} from "./task-meta";
 import type { Membership, MembershipUser } from "@/types/membership";
 import type { Task, TaskAttachment, TaskPriority, TaskStatus } from "@/types/task";
 import type { Team } from "@/types/team";
-
-const STATUS_LABELS: Record<TaskStatus, string> = {
-  todo: "To do",
-  in_progress: "In progress",
-  done: "Done",
-};
-
-const STATUS_COLORS: Record<TaskStatus, "default" | "info" | "success"> = {
-  todo: "default",
-  in_progress: "info",
-  done: "success",
-};
-
-const PRIORITY_LABELS: Record<TaskPriority, string> = {
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  urgent: "Urgent",
-};
-
-const PRIORITY_COLORS: Record<TaskPriority, "default" | "info" | "warning" | "error"> = {
-  low: "default",
-  medium: "info",
-  high: "warning",
-  urgent: "error",
-};
 
 const IMAGE_ACCEPT = "image/jpeg,image/png,image/webp,image/gif";
 const AUDIO_ACCEPT = "audio/mpeg,audio/mp4,audio/x-m4a,audio/aac,audio/wav,audio/webm,audio/ogg";
@@ -79,21 +61,6 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function formatDeadline(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
-function isOverdue(task: Task): boolean {
-  if (!task.deadline || task.status === "done") return false;
-  const end = new Date(task.deadline);
-  end.setHours(23, 59, 59, 999);
-  return end.getTime() < Date.now();
 }
 
 

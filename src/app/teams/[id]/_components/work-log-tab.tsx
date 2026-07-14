@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Alert from "@mui/material/Alert";
+import Badge from "@mui/material/Badge";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
@@ -11,30 +12,43 @@ import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
 import IconButton from "@mui/material/IconButton";
+import LinearProgress from "@mui/material/LinearProgress";
 import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
+import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import AddIcon from "@mui/icons-material/Add";
+import CloseIcon from "@mui/icons-material/Close";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
+import ImageIcon from "@mui/icons-material/Image";
 import TaskAltIcon from "@mui/icons-material/TaskAlt";
-import { DateTimePicker } from "@mui/x-date-pickers/DateTimePicker";
+import VideocamIcon from "@mui/icons-material/Videocam";
+import { DateCalendar } from "@mui/x-date-pickers/DateCalendar";
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import { PickerDay, type PickerDayProps } from "@mui/x-date-pickers/PickerDay";
+import { TimePicker } from "@mui/x-date-pickers/TimePicker";
 import dayjs, { Dayjs } from "dayjs";
 
 import { ApiError } from "@/lib/api/client";
 import { teamsApi } from "@/lib/api/teams";
-import type { Task } from "@/types/task";
+import type { Task, TaskAttachment } from "@/types/task";
 import type { Team } from "@/types/team";
 import type { WorkLogEntry } from "@/types/work-log";
+
+import { AttachmentView } from "./attachment-view";
+
+const IMAGE_ACCEPT = "image/jpeg,image/png,image/webp,image/gif";
+const VIDEO_ACCEPT = "video/mp4,video/webm,video/quicktime,video/ogg";
+
+const NONE = "__none__"; // sentinel for the "no task" option in the select
 
 type State =
   | { kind: "loading" }
   | { kind: "ok"; entries: WorkLogEntry[] }
   | { kind: "error"; message: string };
-
-const NONE = "__none__"; // sentinel for the "no task" option in the select
 
 function formatMinutes(total: number): string {
   const h = Math.floor(total / 60);
@@ -44,61 +58,74 @@ function formatMinutes(total: number): string {
   return `${h}h ${m}m`;
 }
 
-function dayKey(iso: string): string {
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-}
-
-function formatDay(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
-    weekday: "long",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
 function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return dayjs(iso).format("h:mm A");
 }
 
-interface DayGroup {
-  key: string;
-  label: string;
-  minutes: number;
-  entries: WorkLogEntry[];
+/** Local-time Monday 00:00 of the week containing `d`. */
+function startOfWeek(d: Dayjs): Dayjs {
+  // dayjs' `day()` is 0 = Sunday, so shift Sunday back to the *previous* Monday.
+  const offset = d.day() === 0 ? -6 : 1 - d.day();
+  return d.add(offset, "day").startOf("day");
 }
 
-/** Group already-newest-first entries by calendar day, preserving order. */
-function groupByDay(entries: WorkLogEntry[]): DayGroup[] {
-  const groups: DayGroup[] = [];
-  const byKey = new Map<string, DayGroup>();
+function minutesInRange(entries: WorkLogEntry[], from: Dayjs, to: Dayjs): number {
+  return entries
+    .filter((e) => {
+      const t = dayjs(e.started_at);
+      return !t.isBefore(from) && t.isBefore(to);
+    })
+    .reduce((sum, e) => sum + e.minutes, 0);
+}
+
+/** Minutes logged per local calendar day, keyed YYYY-MM-DD. */
+function minutesByDay(entries: WorkLogEntry[]): Map<string, number> {
+  const totals = new Map<string, number>();
   for (const entry of entries) {
-    const key = dayKey(entry.started_at);
-    let group = byKey.get(key);
-    if (!group) {
-      group = { key, label: formatDay(entry.started_at), minutes: 0, entries: [] };
-      byKey.set(key, group);
-      groups.push(group);
-    }
-    group.entries.push(entry);
-    group.minutes += entry.minutes;
+    const key = dayjs(entry.started_at).format("YYYY-MM-DD");
+    totals.set(key, (totals.get(key) ?? 0) + entry.minutes);
   }
-  return groups;
+  return totals;
+}
+
+/** Extra prop threaded into the day slot via `slotProps.day`. */
+type LoggedDayProps = PickerDayProps & { loggedDays?: Map<string, number> };
+
+/** Calendar day cell, dotted when hours were logged that day. */
+function LoggedDay(props: LoggedDayProps) {
+  const { loggedDays, day, outsideCurrentMonth, ...other } = props;
+  const hasEntries =
+    !outsideCurrentMonth && (loggedDays?.get(day.format("YYYY-MM-DD")) ?? 0) > 0;
+
+  return (
+    <Badge
+      overlap="circular"
+      variant="dot"
+      color="primary"
+      invisible={!hasEntries}
+      anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+    >
+      <PickerDay day={day} outsideCurrentMonth={outsideCurrentMonth} {...other} />
+    </Badge>
+  );
 }
 
 export function WorkLogTab({
   team,
   token,
   currentUserId,
+  hoursPerWeek,
 }: {
   team: Team;
   token: string;
   currentUserId: string;
+  /** The member's weekly hour target, from their team work arrangement. */
+  hoursPerWeek: number | null;
 }) {
   const [state, setState] = useState<State>({ kind: "loading" });
   // Tasks assigned to me on this team — the options for linking an entry.
   const [myTasks, setMyTasks] = useState<Task[]>([]);
+  const [selectedDate, setSelectedDate] = useState<Dayjs>(dayjs().startOf("day"));
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<WorkLogEntry | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<WorkLogEntry | null>(null);
@@ -120,20 +147,12 @@ export function WorkLogTab({
     queueMicrotask(load);
     teamsApi
       .listTasks(token, team.id)
-      .then((tasks) => setMyTasks(tasks.filter((t) => t.assignees.some((a) => a.id === currentUserId))))
+      .then((tasks) =>
+        setMyTasks(tasks.filter((t) => t.assignees.some((a) => a.id === currentUserId))),
+      )
       .catch(() => setMyTasks([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, team.id, currentUserId]);
-
-  const openCreate = () => {
-    setEditing(null);
-    setDialogOpen(true);
-  };
-
-  const openEdit = (entry: WorkLogEntry) => {
-    setEditing(entry);
-    setDialogOpen(true);
-  };
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -145,110 +164,196 @@ export function WorkLogTab({
     }
   };
 
-  const groups = state.kind === "ok" ? groupByDay(state.entries) : [];
-  const totalMinutes = groups.reduce((sum, g) => sum + g.minutes, 0);
+  const entries = state.kind === "ok" ? state.entries : [];
+  const loggedDays = minutesByDay(entries);
+
+  // Entries are newest-first from the API; within a day, read them chronologically.
+  const dayEntries = entries
+    .filter((e) => dayjs(e.started_at).isSame(selectedDate, "day"))
+    .sort((a, b) => dayjs(a.started_at).valueOf() - dayjs(b.started_at).valueOf());
+  const dayMinutes = dayEntries.reduce((sum, e) => sum + e.minutes, 0);
+
+  const weekStart = startOfWeek(dayjs());
+  const weekMinutes = minutesInRange(entries, weekStart, weekStart.add(7, "day"));
+  const targetMinutes = hoursPerWeek != null ? hoursPerWeek * 60 : null;
+  const remainingMinutes = targetMinutes != null ? targetMinutes - weekMinutes : null;
+  const weekProgress =
+    targetMinutes != null && targetMinutes > 0
+      ? Math.min(100, Math.round((weekMinutes / targetMinutes) * 100))
+      : 0;
+  const overTarget = remainingMinutes !== null && remainingMinutes < 0;
 
   return (
-    <Stack spacing={2}>
-      <Stack direction="row" sx={{ justifyContent: "space-between", alignItems: "center" }}>
-        <Typography variant="body2" color="text.secondary">
-          {state.kind === "ok" && state.entries.length > 0
-            ? `${formatMinutes(totalMinutes)} logged across ${groups.length} ${
-                groups.length === 1 ? "day" : "days"
-              }`
-            : "Log the hours you work on this team."}
-        </Typography>
-        <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={openCreate}>
-          Log time
-        </Button>
+    <Stack direction={{ xs: "column", md: "row" }} spacing={3} sx={{ alignItems: "flex-start" }}>
+      {/* --- Left: the selected day's entries -------------------------------- */}
+      <Stack spacing={2} sx={{ flexGrow: 1, minWidth: 0, width: "100%" }}>
+        {targetMinutes != null && (
+          <Paper variant="outlined" sx={{ p: 2 }}>
+            <Stack spacing={1}>
+              <Stack
+                direction="row"
+                sx={{ justifyContent: "space-between", alignItems: "baseline" }}
+              >
+                <Typography variant="subtitle2">This week</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {formatMinutes(weekMinutes)} of {formatMinutes(targetMinutes)}
+                </Typography>
+              </Stack>
+              <LinearProgress
+                variant="determinate"
+                value={weekProgress}
+                color={overTarget ? "warning" : "primary"}
+                sx={{ borderRadius: 1, height: 8 }}
+              />
+              <Typography
+                variant="body2"
+                color={overTarget ? "warning.main" : "text.secondary"}
+              >
+                {remainingMinutes === null
+                  ? " "
+                  : remainingMinutes > 0
+                    ? `${formatMinutes(remainingMinutes)} remaining this week`
+                    : remainingMinutes === 0
+                      ? "Weekly target reached"
+                      : `${formatMinutes(-remainingMinutes)} over your weekly target`}
+              </Typography>
+            </Stack>
+          </Paper>
+        )}
+
+        <Stack direction="row" sx={{ justifyContent: "space-between", alignItems: "center" }}>
+          <Box>
+            <Typography sx={{ fontWeight: 600 }}>
+              {selectedDate.format("dddd, MMM D, YYYY")}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {dayEntries.length > 0
+                ? `${formatMinutes(dayMinutes)} logged`
+                : "Nothing logged on this day"}
+            </Typography>
+          </Box>
+          <Button
+            variant="contained"
+            size="small"
+            startIcon={<AddIcon />}
+            onClick={() => {
+              setEditing(null);
+              setDialogOpen(true);
+            }}
+          >
+            Log time
+          </Button>
+        </Stack>
+
+        {state.kind === "loading" && (
+          <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
+            <CircularProgress size={20} />
+            <Typography color="text.secondary">Loading…</Typography>
+          </Stack>
+        )}
+
+        {state.kind === "error" && <Alert severity="error">{state.message}</Alert>}
+
+        {state.kind === "ok" && dayEntries.length === 0 && (
+          <Paper variant="outlined" sx={{ p: 4, textAlign: "center" }}>
+            <Typography color="text.secondary">
+              No time logged on this day. Pick another date on the calendar, or click
+              &quot;Log time&quot;.
+            </Typography>
+          </Paper>
+        )}
+
+        {dayEntries.map((entry) => (
+          <Paper key={entry.id} variant="outlined" sx={{ p: 2 }}>
+            <Stack
+              direction="row"
+              spacing={1.5}
+              sx={{ alignItems: "flex-start", justifyContent: "space-between" }}
+            >
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                  {formatTime(entry.started_at)} – {formatTime(entry.ended_at)}
+                  <Typography component="span" variant="caption" color="text.secondary">
+                    {" "}
+                    · {formatMinutes(entry.minutes)}
+                  </Typography>
+                </Typography>
+                <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
+                  {entry.description}
+                </Typography>
+                {entry.task_title && (
+                  <Chip
+                    size="small"
+                    variant="outlined"
+                    icon={<TaskAltIcon />}
+                    label={entry.task_title}
+                    sx={{ mt: 0.5 }}
+                  />
+                )}
+                {entry.attachments.length > 0 && (
+                  <Stack direction="row" spacing={1.5} sx={{ flexWrap: "wrap", gap: 1.5, mt: 1 }}>
+                    {entry.attachments.map((a) => (
+                      <AttachmentView key={a.url} attachment={a} />
+                    ))}
+                  </Stack>
+                )}
+              </Box>
+              <Stack direction="row" spacing={0.5}>
+                <IconButton
+                  size="small"
+                  aria-label="Edit entry"
+                  onClick={() => {
+                    setEditing(entry);
+                    setDialogOpen(true);
+                  }}
+                >
+                  <EditIcon fontSize="small" />
+                </IconButton>
+                <IconButton
+                  size="small"
+                  aria-label="Delete entry"
+                  onClick={() => setDeleteTarget(entry)}
+                >
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              </Stack>
+            </Stack>
+          </Paper>
+        ))}
       </Stack>
 
-      {state.kind === "loading" && (
-        <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
-          <CircularProgress size={20} />
-          <Typography color="text.secondary">Loading…</Typography>
-        </Stack>
-      )}
-
-      {state.kind === "error" && <Alert severity="error">{state.message}</Alert>}
-
-      {state.kind === "ok" && state.entries.length === 0 && (
-        <Paper variant="outlined" sx={{ p: 4, textAlign: "center" }}>
-          <Typography color="text.secondary">
-            No time logged yet. Click &quot;Log time&quot; to add your first entry.
-          </Typography>
-        </Paper>
-      )}
-
-      {groups.map((group) => (
-        <Paper key={group.key} variant="outlined" sx={{ p: 2 }}>
-          <Stack spacing={1.5}>
-            <Stack direction="row" sx={{ justifyContent: "space-between", alignItems: "baseline" }}>
-              <Typography sx={{ fontWeight: 600 }}>{group.label}</Typography>
-              <Chip size="small" label={formatMinutes(group.minutes)} />
-            </Stack>
-            <Stack spacing={1}>
-              {group.entries.map((entry) => (
-                <Stack
-                  key={entry.id}
-                  direction="row"
-                  spacing={1.5}
-                  sx={{ alignItems: "flex-start", justifyContent: "space-between" }}
-                >
-                  <Box sx={{ minWidth: 0 }}>
-                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                      {formatTime(entry.started_at)} – {formatTime(entry.ended_at)}
-                      <Typography component="span" variant="caption" color="text.secondary">
-                        {" "}
-                        · {formatMinutes(entry.minutes)}
-                      </Typography>
-                    </Typography>
-                    <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
-                      {entry.description}
-                    </Typography>
-                    {entry.task_title && (
-                      <Chip
-                        size="small"
-                        variant="outlined"
-                        icon={<TaskAltIcon />}
-                        label={entry.task_title}
-                        sx={{ mt: 0.5 }}
-                      />
-                    )}
-                  </Box>
-                  <Stack direction="row" spacing={0.5}>
-                    <IconButton
-                      size="small"
-                      aria-label="Edit entry"
-                      onClick={() => openEdit(entry)}
-                    >
-                      <EditIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton
-                      size="small"
-                      aria-label="Delete entry"
-                      onClick={() => setDeleteTarget(entry)}
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  </Stack>
-                </Stack>
-              ))}
-            </Stack>
-          </Stack>
-        </Paper>
-      ))}
+      {/* --- Right: the calendar --------------------------------------------- */}
+      <Paper variant="outlined" sx={{ flexShrink: 0 }}>
+        <DateCalendar
+          value={selectedDate}
+          onChange={(value) => value && setSelectedDate(value.startOf("day"))}
+          slots={{ day: LoggedDay }}
+          // The cast is MUI's own pattern for passing custom props to a slot:
+          // `slotProps.day` is typed against the built-in day, which knows
+          // nothing about `loggedDays`.
+          slotProps={{ day: { loggedDays } as Partial<LoggedDayProps> }}
+        />
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ display: "block", px: 2, pb: 1.5 }}
+        >
+          Dotted days have logged hours.
+        </Typography>
+      </Paper>
 
       {dialogOpen && (
         <WorkLogDialog
-          key={editing?.id ?? "new"}
+          key={editing?.id ?? `new-${selectedDate.format("YYYY-MM-DD")}`}
           teamId={team.id}
           token={token}
           entry={editing}
+          defaultDate={selectedDate}
           tasks={myTasks}
           onClose={() => setDialogOpen(false)}
-          onSaved={() => {
+          onSaved={(savedOn) => {
             setDialogOpen(false);
+            setSelectedDate(savedOn.startOf("day"));
             load();
           }}
         />
@@ -272,14 +377,21 @@ export function WorkLogTab({
 
 // --- Add / edit dialog ---------------------------------------------------------
 
-function defaultStart(): Dayjs {
-  return dayjs().set("minute", 0).set("second", 0).set("millisecond", 0);
+/** Combine a calendar date with a wall-clock time into one instant. */
+function combine(date: Dayjs, time: Dayjs): Dayjs {
+  return date
+    .startOf("day")
+    .hour(time.hour())
+    .minute(time.minute())
+    .second(0)
+    .millisecond(0);
 }
 
 function WorkLogDialog({
   teamId,
   token,
   entry,
+  defaultDate,
   tasks,
   onClose,
   onSaved,
@@ -287,56 +399,111 @@ function WorkLogDialog({
   teamId: string;
   token: string;
   entry: WorkLogEntry | null;
+  defaultDate: Dayjs;
   tasks: Task[];
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (savedOn: Dayjs) => void;
 }) {
+  // An entry is a date plus a start and end time on *that* date, so it can't
+  // run past midnight — matching "an entry can't exceed one day".
+  const [date, setDate] = useState<Dayjs | null>(
+    entry ? dayjs(entry.started_at).startOf("day") : defaultDate,
+  );
   const [start, setStart] = useState<Dayjs | null>(
-    entry ? dayjs(entry.started_at) : defaultStart(),
+    entry ? dayjs(entry.started_at) : dayjs().minute(0).second(0).millisecond(0),
   );
   const [end, setEnd] = useState<Dayjs | null>(entry ? dayjs(entry.ended_at) : null);
   const [description, setDescription] = useState(entry?.description ?? "");
   const [taskId, setTaskId] = useState(entry?.task_id ?? NONE);
+  const [attachments, setAttachments] = useState<TaskAttachment[]>(entry?.attachments ?? []);
+  const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
 
+  const hasVideo = attachments.some((a) => a.kind === "video");
+
+  const datesValid =
+    date !== null && date.isValid() && start !== null && start.isValid() && end !== null && end.isValid();
+
+  const startedAt = datesValid ? combine(date, start) : null;
+  const endedAt = datesValid ? combine(date, end) : null;
   const durationMinutes =
-    start && start.isValid() && end && end.isValid() ? end.diff(start, "minute") : null;
+    startedAt && endedAt ? endedAt.diff(startedAt, "minute") : null;
 
+  // Both times land on the same date, so the only failure left is end ≤ start
+  // (which is also what an overnight shift would look like).
   const rangeError =
     durationMinutes !== null && durationMinutes <= 0
-      ? "The end time must be after the start time."
-      : durationMinutes !== null && durationMinutes > 24 * 60
-        ? "A single entry can't be longer than 24 hours."
-        : null;
+      ? "The end time must be after the start time, on the same day."
+      : null;
 
   const canSubmit =
-    start !== null &&
-    start.isValid() &&
-    end !== null &&
-    end.isValid() &&
+    datesValid &&
     description.trim().length > 0 &&
     rangeError === null &&
-    !submitting;
+    !submitting &&
+    !uploading;
+
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = ""; // allow re-picking the same file
+    if (files.length === 0) return;
+    setError(null);
+    setUploading(true);
+    try {
+      for (const file of files) {
+        const uploaded = await teamsApi.uploadWorkLogAttachment(token, teamId, file);
+        setAttachments((prev) => [...prev, uploaded]);
+      }
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to upload the image.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleVideoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setError(null);
+    setUploading(true);
+    try {
+      const uploaded = await teamsApi.uploadWorkLogAttachment(token, teamId, file);
+      // Only one video per entry — a newly picked video replaces the last one.
+      setAttachments((prev) => [...prev.filter((a) => a.kind !== "video"), uploaded]);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to upload the video.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const removeAttachment = (url: string) => {
+    setAttachments((prev) => prev.filter((a) => a.url !== url));
+  };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!canSubmit) return;
+    if (!canSubmit || !startedAt || !endedAt) return;
     setSubmitting(true);
     setError(null);
     try {
       const payload = {
-        started_at: start.toISOString(),
-        ended_at: end.toISOString(),
+        started_at: startedAt.toISOString(),
+        ended_at: endedAt.toISOString(),
         description: description.trim(),
         task_id: taskId === NONE ? null : taskId,
+        attachments,
       };
       if (entry) {
         await teamsApi.updateWorkLog(token, teamId, entry.id, payload);
       } else {
         await teamsApi.createWorkLog(token, teamId, payload);
       }
-      onSaved();
+      onSaved(startedAt);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to save the entry.");
       setSubmitting(false);
@@ -351,27 +518,34 @@ function WorkLogDialog({
           <Stack spacing={2} sx={{ pt: 1 }}>
             {error && <Alert severity="error">{error}</Alert>}
 
+            <DatePicker
+              label="Date"
+              value={date}
+              onChange={setDate}
+              slotProps={{ textField: { fullWidth: true, required: true } }}
+            />
+
             <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-              <DateTimePicker
-                label="Start"
+              <TimePicker
+                label="Start time"
                 value={start}
                 onChange={setStart}
-                ampm
                 slotProps={{ textField: { fullWidth: true, required: true } }}
               />
-              <DateTimePicker
-                label="End"
+              <TimePicker
+                label="End time"
                 value={end}
                 onChange={setEnd}
-                ampm
-                minDateTime={start ?? undefined}
                 slotProps={{
                   textField: {
                     fullWidth: true,
                     required: true,
                     error: rangeError !== null,
                     helperText:
-                      rangeError ?? (durationMinutes !== null ? formatMinutes(durationMinutes) : " "),
+                      rangeError ??
+                      (durationMinutes !== null && durationMinutes > 0
+                        ? formatMinutes(durationMinutes)
+                        : " "),
                   },
                 }}
               />
@@ -412,6 +586,81 @@ function WorkLogDialog({
                   <MenuItem value={entry.task_id}>{entry.task_title}</MenuItem>
                 )}
             </TextField>
+
+            <Box>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                Attachments
+              </Typography>
+              <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1 }}>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<ImageIcon />}
+                  disabled={uploading}
+                  onClick={() => imageInputRef.current?.click()}
+                >
+                  Add images
+                </Button>
+                <Tooltip title={hasVideo ? "Replaces the current video" : ""}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<VideocamIcon />}
+                    disabled={uploading}
+                    onClick={() => videoInputRef.current?.click()}
+                  >
+                    {hasVideo ? "Replace video" : "Add video"}
+                  </Button>
+                </Tooltip>
+                {uploading && (
+                  <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                    <CircularProgress size={18} />
+                    <Typography variant="caption" color="text.secondary">
+                      Uploading…
+                    </Typography>
+                  </Stack>
+                )}
+              </Stack>
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept={IMAGE_ACCEPT}
+                multiple
+                hidden
+                onChange={(e) => void handleImageUpload(e)}
+              />
+              <input
+                ref={videoInputRef}
+                type="file"
+                accept={VIDEO_ACCEPT}
+                hidden
+                onChange={(e) => void handleVideoUpload(e)}
+              />
+
+              {attachments.length > 0 && (
+                <Stack direction="row" spacing={1.5} sx={{ flexWrap: "wrap", gap: 1.5, mt: 1.5 }}>
+                  {attachments.map((a) => (
+                    <Box key={a.url} sx={{ position: "relative" }}>
+                      <AttachmentView attachment={a} />
+                      <IconButton
+                        size="small"
+                        aria-label={`Remove ${a.filename}`}
+                        onClick={() => removeAttachment(a.url)}
+                        sx={{
+                          position: "absolute",
+                          top: 2,
+                          right: 2,
+                          bgcolor: "background.paper",
+                          "&:hover": { bgcolor: "background.paper" },
+                        }}
+                      >
+                        <CloseIcon fontSize="inherit" />
+                      </IconButton>
+                    </Box>
+                  ))}
+                </Stack>
+              )}
+            </Box>
           </Stack>
         </DialogContent>
         <DialogActions>

@@ -142,7 +142,9 @@ function TeamDetailPageContent() {
 
   return (
     <AppShell>
-      <Stack spacing={3} sx={{ maxWidth: 720 }}>
+      {/* The hours tab is two columns (entries + calendar), so it needs more
+          room than the single-column tabs. */}
+      <Stack spacing={3} sx={{ maxWidth: tab === "hours" ? 1100 : 720 }}>
         <Stack spacing={1}>
           <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
             <Typography variant="h4" component="h1" sx={{ fontWeight: 700 }}>
@@ -192,8 +194,13 @@ function TeamDetailPageContent() {
             isSuperAdmin={user.is_super_admin}
           />
         )}
-        {tab === "hours" && isHourlyMember && (
-          <WorkLogTab team={team} token={token!} currentUserId={user.id} />
+        {tab === "hours" && isHourlyMember && myMembership && (
+          <WorkLogTab
+            team={team}
+            token={token!}
+            currentUserId={user.id}
+            hoursPerWeek={myMembership.work.hours_per_week}
+          />
         )}
       </Stack>
     </AppShell>

@@ -96,6 +96,14 @@ export const teamsApi = {
 
   // --- Work log (hourly members only) ---
 
+  uploadWorkLogAttachment: (token: string, teamId: string, file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return apiClient.upload<TaskAttachment>(`/teams/${teamId}/work-logs/attachments`, formData, {
+      headers: authHeaders(token),
+    });
+  },
+
   listWorkLogs: (token: string, teamId: string, userId?: string) => {
     const suffix = userId ? `?user_id=${encodeURIComponent(userId)}` : "";
     return apiClient.get<WorkLogEntry[]>(`/teams/${teamId}/work-logs${suffix}`, {
