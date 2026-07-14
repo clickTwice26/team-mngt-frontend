@@ -25,9 +25,11 @@ import Switch from "@mui/material/Switch";
 import Tab from "@mui/material/Tab";
 import Tabs from "@mui/material/Tabs";
 import TextField from "@mui/material/TextField";
+import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
+import ScheduleIcon from "@mui/icons-material/Schedule";
 
 import { AppShell } from "@/components/layout/app-shell";
 import { useAuth } from "@/context/auth-context";
@@ -38,6 +40,11 @@ import type { Membership, MembershipUser } from "@/types/membership";
 import type { Team } from "@/types/team";
 
 import { TasksTab } from "./_components/tasks-tab";
+import {
+  WorkArrangementDialog,
+  WorkChip,
+  WorkSummary,
+} from "./_components/work-arrangement-dialog";
 
 type TeamState =
   | { kind: "loading" }
@@ -149,7 +156,14 @@ function TeamDetailPageContent() {
           />
         )}
         {tab === "members" && (
-          <TeamMembersTab team={team} token={token!} canManage={user.is_super_admin} />
+          <TeamMembersTab
+            team={team}
+            token={token!}
+            canManage={user.is_super_admin}
+            // Setting a member's working method is developer-only (the endpoint
+            // is gated on PlatformDeveloperDep).
+            canSetWork={user.role === "platform_developer"}
+          />
         )}
         {tab === "tasks" && (
           <TasksTab
@@ -267,11 +281,14 @@ function TeamMembersTab({
   team,
   token,
   canManage,
+  canSetWork,
 }: {
   team: Team;
   token: string;
   canManage: boolean;
+  canSetWork: boolean;
 }) {
+  const [workTarget, setWorkTarget] = useState<Membership | null>(null);
   const [members, setMembers] = useState<Membership[]>([]);
   const [membersLoading, setMembersLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -389,16 +406,32 @@ function TeamMembersTab({
             {members.map((membership) => (
               <ListItem
                 key={membership.id}
+                alignItems="flex-start"
                 secondaryAction={
-                  canManage && (
-                    <IconButton
-                      edge="end"
-                      aria-label="Remove member"
-                      onClick={() => void handleRemove(membership.user.id)}
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  )
+                  <Stack direction="row" spacing={0.5}>
+                    {canSetWork && (
+                      <Tooltip title="Set working method">
+                        <IconButton
+                          edge="end"
+                          aria-label={`Set working method for ${
+                            membership.user.full_name || membership.user.email
+                          }`}
+                          onClick={() => setWorkTarget(membership)}
+                        >
+                          <ScheduleIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                    {canManage && (
+                      <IconButton
+                        edge="end"
+                        aria-label="Remove member"
+                        onClick={() => void handleRemove(membership.user.id)}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    )}
+                  </Stack>
                 }
               >
                 <ListItemAvatar>
@@ -409,8 +442,18 @@ function TeamMembersTab({
                   </Avatar>
                 </ListItemAvatar>
                 <ListItemText
-                  primary={membership.user.full_name || "Unnamed user"}
-                  secondary={membership.user.email}
+                  primary={
+                    <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                      <span>{membership.user.full_name || "Unnamed user"}</span>
+                      <WorkChip work={membership.work} />
+                    </Stack>
+                  }
+                  secondary={
+                    <Stack component="span" spacing={0.25}>
+                      <span>{membership.user.email}</span>
+                      <WorkSummary work={membership.work} />
+                    </Stack>
+                  }
                 />
               </ListItem>
             ))}
@@ -453,6 +496,23 @@ function TeamMembersTab({
           </Button>
         </DialogActions>
       </Dialog>
+
+      {workTarget && (
+        <WorkArrangementDialog
+          // Keyed by member so the dialog's form state resets when a different
+          // member is picked, rather than showing the previous one's values.
+          key={workTarget.id}
+          open
+          membership={workTarget}
+          teamId={team.id}
+          token={token}
+          onClose={() => setWorkTarget(null)}
+          onSaved={(updated) => {
+            setMembers((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+            setWorkTarget(null);
+          }}
+        />
+      )}
     </Stack>
   );
 }

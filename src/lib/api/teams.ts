@@ -2,7 +2,7 @@
  * (all require authentication). */
 
 import { apiClient } from "@/lib/api/client";
-import type { Membership } from "@/types/membership";
+import type { Membership, WorkArrangement } from "@/types/membership";
 import type { Page, Team, TeamCreate, TeamUpdate } from "@/types/team";
 import type { Task, TaskAttachment, TaskCreate, TaskUpdate } from "@/types/task";
 import type { TaskComment, TaskCommentCreate } from "@/types/task-comment";
@@ -52,6 +52,17 @@ export const teamsApi = {
 
   removeMember: (token: string, teamId: string, userId: string) =>
     apiClient.delete<{ message: string }>(`/teams/${teamId}/members/${userId}`, {
+      headers: authHeaders(token),
+    }),
+
+  /** Set a member's working method. Platform developers only. */
+  setMemberWork: (
+    token: string,
+    teamId: string,
+    userId: string,
+    payload: WorkArrangement,
+  ) =>
+    apiClient.put<Membership>(`/teams/${teamId}/members/${userId}/work`, payload, {
       headers: authHeaders(token),
     }),
 
