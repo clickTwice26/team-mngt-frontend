@@ -3,17 +3,19 @@
 import { useEffect, useRef, useState } from "react";
 
 import { wsBaseUrl } from "@/config/env";
+import { refreshSession } from "@/lib/api/client";
 import type { DiscussionEvent } from "@/types/team-message";
 
-/** Must match BEARER_SUBPROTOCOL in api/v1/endpoints/discussion.py. */
-const BEARER_SUBPROTOCOL = "teamup.bearer.v1";
+/** The session's access cookie rides the handshake automatically (same-site),
+ *  so the token expired mid-session and the socket needs re-auth. */
+const WS_UNAUTHORIZED = 4401;
 
 /** Close codes the server uses to say "don't bother retrying". Anything else —
- *  a dropped wifi, a redeploy, an idle proxy — is worth another go. */
+ *  a dropped wifi, a redeploy, an idle proxy — is worth another go. `4401` is
+ *  handled specially (refresh, then reconnect), so it isn't listed here. */
 const FATAL_CODES = new Set([
-  1008, // policy violation: bad Origin, or no token offered
+  1008, // policy violation: bad Origin, or not authenticated
   1003, // we sent something the socket doesn't accept
-  4401, // token invalid or expired
   4403, // not a member of this team
 ]);
 
@@ -33,19 +35,17 @@ interface Handlers {
 /**
  * Subscribes to a team's discussion.
  *
- * The token rides in the WebSocket subprotocol rather than the query string: a
- * browser can't set an Authorization header here, and a URL ends up written down
- * in far more places (access logs, proxy traces) than a header does.
+ * Auth rides in the httpOnly session cookie, which the browser attaches to the
+ * WebSocket handshake automatically (same-site) — nothing is read from, or
+ * passed by, JavaScript. If the short-lived access cookie has expired the server
+ * closes with 4401; the hook then rotates it via `/auth/refresh` and reconnects
+ * once, so a long-lived tab heals itself instead of going quiet.
  */
-export function useDiscussionSocket(
-  teamId: string,
-  token: string,
-  handlers: Handlers,
-): SocketStatus {
+export function useDiscussionSocket(teamId: string, handlers: Handlers): SocketStatus {
   const [status, setStatus] = useState<SocketStatus>("connecting");
 
   // Held in a ref so a re-render with a new closure doesn't tear the socket
-  // down and reconnect — only the team or the token should do that.
+  // down and reconnect — only the team should do that.
   const handlersRef = useRef(handlers);
   useEffect(() => {
     handlersRef.current = handlers;
@@ -55,16 +55,14 @@ export function useDiscussionSocket(
     let disposed = false;
     let socket: WebSocket | null = null;
     let retries = 0;
+    let refreshedForAuth = false; // guard: at most one refresh-driven reconnect
     let timer: ReturnType<typeof setTimeout> | undefined;
 
     const connect = () => {
       if (disposed) return;
       setStatus("connecting");
 
-      const ws = new WebSocket(`${wsBaseUrl}/teams/${teamId}/discussion/ws`, [
-        BEARER_SUBPROTOCOL,
-        token,
-      ]);
+      const ws = new WebSocket(`${wsBaseUrl}/teams/${teamId}/discussion/ws`);
       socket = ws;
 
       ws.onmessage = (raw: MessageEvent<string>) => {
@@ -81,6 +79,7 @@ export function useDiscussionSocket(
           // may have missed messages while it was down.
           if (retries > 0) handlersRef.current.onResync();
           retries = 0;
+          refreshedForAuth = false; // fresh refresh budget for the next expiry
           return;
         }
         if (event.type === "ping") return; // Heartbeat — nothing to do.
@@ -91,6 +90,19 @@ export function useDiscussionSocket(
       ws.onclose = (event: CloseEvent) => {
         if (disposed) return;
         setStatus("offline");
+
+        // The access cookie expired. Rotate it once, then reconnect — the new
+        // cookie rides the next handshake. If refresh fails, or we've already
+        // tried, treat it as terminal so we don't loop against a dead session.
+        if (event.code === WS_UNAUTHORIZED) {
+          if (refreshedForAuth) return;
+          refreshedForAuth = true;
+          void refreshSession().then((ok) => {
+            if (!disposed && ok) connect();
+          });
+          return;
+        }
+
         if (FATAL_CODES.has(event.code)) return;
 
         // Back off so a backend that's down doesn't get hammered by every open
@@ -109,7 +121,7 @@ export function useDiscussionSocket(
       // 1000 = a normal closure: we're leaving the tab, not failing.
       socket?.close(1000, "Leaving the discussion");
     };
-  }, [teamId, token]);
+  }, [teamId]);
 
   return status;
 }

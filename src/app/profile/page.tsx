@@ -17,6 +17,7 @@ import CameraAltIcon from "@mui/icons-material/CameraAlt";
 import VerifiedIcon from "@mui/icons-material/Verified";
 
 import { AppShell } from "@/components/layout/app-shell";
+import { SessionsCard } from "@/app/profile/_components/sessions-card";
 import { useAuth } from "@/context/auth-context";
 import { authApi } from "@/lib/api/auth";
 import { ApiError } from "@/lib/api/client";
@@ -36,11 +37,9 @@ const ROLE_LABELS: Record<string, string> = {
 
 function PasswordCard({
   user,
-  token,
   updateUser,
 }: {
   user: User;
-  token: string;
   updateUser: (user: User) => void;
 }) {
   const [currentPassword, setCurrentPassword] = useState("");
@@ -72,7 +71,7 @@ function PasswordCard({
 
     setSubmitting(true);
     try {
-      const updated = await authApi.setPassword(token, {
+      const updated = await authApi.setPassword({
         current_password: user.has_password ? currentPassword : undefined,
         new_password: newPassword,
       });
@@ -153,7 +152,7 @@ function PasswordCard({
 
 export default function ProfilePage() {
   const router = useRouter();
-  const { user, token, loading, isAuthenticated, updateUser } = useAuth();
+  const { user, loading, isAuthenticated, updateUser } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [uploadState, setUploadState] = useState<UploadState>({ kind: "idle" });
@@ -170,7 +169,7 @@ export default function ProfilePage() {
     };
   }, [previewUrl]);
 
-  if (loading || !user || !token) {
+  if (loading || !user) {
     return (
       <AppShell>
         <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
@@ -199,7 +198,7 @@ export default function ProfilePage() {
     setPreviewUrl(localPreview);
     setUploadState({ kind: "uploading" });
     try {
-      const updated = await authApi.uploadAvatar(token, file);
+      const updated = await authApi.uploadAvatar(file);
       updateUser(updated);
       setUploadState({ kind: "idle" });
     } catch (err) {
@@ -301,7 +300,9 @@ export default function ProfilePage() {
           </Stack>
         </Paper>
 
-        <PasswordCard user={user} token={token} updateUser={updateUser} />
+        <PasswordCard user={user} updateUser={updateUser} />
+
+        <SessionsCard />
       </Stack>
     </AppShell>
   );

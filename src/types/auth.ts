@@ -38,18 +38,25 @@ export interface ImpersonationContext {
   expires_at: string;
 }
 
-export interface AuthToken {
-  access_token: string;
-  token_type: string;
-  expires_in: number;
+/**
+ * `GET /auth/session` — and the body of every sign-in (login/register/Google/
+ * refresh). The tokens live in httpOnly cookies, so the body carries only the
+ * user and any impersonation in flight.
+ */
+export interface Session {
   user: User;
   impersonation: ImpersonationContext | null;
 }
 
-/** `GET /auth/session` — the user plus any impersonation in flight. */
-export interface Session {
-  user: User;
-  impersonation: ImpersonationContext | null;
+/** One of the caller's live sessions (`GET /auth/sessions`). */
+export interface SessionDevice {
+  id: string;
+  created_at: string | null;
+  last_seen_at: string | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  /** True for the session making the request — labelled "This device". */
+  current: boolean;
 }
 
 /** One row of the impersonation trail (`GET /auth/impersonations`). */

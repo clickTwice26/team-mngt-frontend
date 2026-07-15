@@ -73,7 +73,7 @@ export function AuthNav() {
         <MenuItem
           onClick={() => {
             setAnchorEl(null);
-            logout();
+            void logout();
           }}
         >
           <ListItemIcon>

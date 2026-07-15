@@ -155,7 +155,7 @@ export function DiscussionTab({
     );
   }, []);
 
-  const status = useDiscussionSocket(team.id, token, { onEvent, onResync: load });
+  const status = useDiscussionSocket(team.id, { onEvent, onResync: load });
 
   // Apply the server's version of the message straight away, so the reaction
   // lands even if the socket is down. The socket echoes the same update back to
