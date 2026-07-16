@@ -27,8 +27,11 @@ import Typography from "@mui/material/Typography";
 import AddIcon from "@mui/icons-material/Add";
 import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
 import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutlineOutlined";
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import TaskAltIcon from "@mui/icons-material/TaskAlt";
 
 import { DateTimePicker } from "@mui/x-date-pickers/DateTimePicker";
 import dayjs, { Dayjs } from "dayjs";
@@ -116,6 +119,10 @@ export function TasksTab({
   const [deleteTarget, setDeleteTarget] = useState<Task | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  // Whether the "Completed" group is expanded. Done tasks are always pulled out
+  // of the active list into their own section; this just hides or shows them.
+  // Collapsed by default so finished work stays out of the way until asked for.
+  const [showCompleted, setShowCompleted] = useState(false);
 
   useEffect(() => {
     const id = setTimeout(() => {
@@ -280,6 +287,20 @@ export function TasksTab({
   const pageCount = Math.ceil(total / pageSize);
   const filtered = hasActiveFilters(filters, search);
 
+  // Split the loaded page: active tasks first, then a collapsible "Completed"
+  // divider and the done ones. Grouped on the client so marking a task done
+  // visibly moves it out of the active list into the Completed section.
+  const okTasks = state.kind === "ok" ? state.tasks : [];
+  const doneCount = okTasks.filter((t) => t.status === "done").length;
+  type TaskRow = { kind: "task"; task: Task } | { kind: "completed-header"; count: number };
+  const taskRows: TaskRow[] = [
+    ...okTasks.filter((t) => t.status !== "done").map((task) => ({ kind: "task" as const, task })),
+    ...(doneCount > 0 ? [{ kind: "completed-header" as const, count: doneCount }] : []),
+    ...(showCompleted
+      ? okTasks.filter((t) => t.status === "done").map((task) => ({ kind: "task" as const, task }))
+      : []),
+  ];
+
   return (
     <Stack spacing={2}>
       <Stack direction="row" sx={{ justifyContent: "flex-end" }}>
@@ -320,7 +341,27 @@ export function TasksTab({
 
       {state.kind === "ok" && state.tasks.length > 0 && (
         <Stack spacing={1.5}>
-          {state.tasks.map((task) => {
+          {taskRows.map((row) => {
+            if (row.kind === "completed-header") {
+              return (
+                <Button
+                  key="completed-header"
+                  onClick={() => setShowCompleted((s) => !s)}
+                  color="inherit"
+                  startIcon={showCompleted ? <ExpandMoreIcon /> : <ChevronRightIcon />}
+                  sx={{
+                    justifyContent: "flex-start",
+                    textTransform: "none",
+                    color: "text.secondary",
+                    mt: 1,
+                  }}
+                >
+                  <TaskAltIcon fontSize="small" color="success" sx={{ mr: 0.75 }} />
+                  Completed ({row.count})
+                </Button>
+              );
+            }
+            const task = row.task;
             const canDelete = isSuperAdmin || task.created_by.id === currentUserId;
             // Status is the assignee's to report — mirrors the server rule, which
             // rejects it for anyone else (see TaskService.update_task).
