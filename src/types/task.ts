@@ -60,6 +60,10 @@ export interface Task {
   attachments: TaskAttachment[];
   created_at: string;
   updated_at: string;
+  /** Present only in the cross-team "My Tasks" view; null on a team board. */
+  team_name?: string | null;
+  company_id?: string | null;
+  company_name?: string | null;
 }
 
 export interface TaskCreate {

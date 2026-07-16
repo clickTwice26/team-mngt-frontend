@@ -1,9 +1,10 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import Alert from "@mui/material/Alert";
+import Avatar from "@mui/material/Avatar";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
@@ -29,8 +30,10 @@ import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import AddIcon from "@mui/icons-material/Add";
+import CameraAltIcon from "@mui/icons-material/CameraAlt";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
+import GroupsIcon from "@mui/icons-material/Groups";
 
 import { AppShell } from "@/components/layout/app-shell";
 import { useAuth } from "@/context/auth-context";
@@ -39,6 +42,9 @@ import { companiesApi } from "@/lib/api/companies";
 import { teamsApi } from "@/lib/api/teams";
 import type { Company } from "@/types/company";
 import type { Team } from "@/types/team";
+
+const LOGO_ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+const LOGO_MAX_BYTES = 5 * 1024 * 1024; // 5 MB — matches the backend ceiling
 
 type State =
   | { kind: "loading" }
@@ -61,6 +67,50 @@ function TeamsPageContent() {
   const [isActive, setIsActive] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  // Logo staged in the dialog until save. See the same pattern on the companies
+  // page: `logoFile` is a new image to upload, `logoPreview` is what's shown,
+  // `removeLogo` clears an existing one on save.
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [removeLogo, setRemoveLogo] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const logoObjectUrlRef = useRef<string | null>(null);
+
+  const revokeLogoPreview = () => {
+    if (logoObjectUrlRef.current) {
+      URL.revokeObjectURL(logoObjectUrlRef.current);
+      logoObjectUrlRef.current = null;
+    }
+  };
+
+  const handleLogoPicked = (file: File | undefined) => {
+    if (!file) return;
+    setFormError(null);
+    if (!LOGO_ALLOWED_TYPES.includes(file.type)) {
+      setFormError("Unsupported image type. Use JPEG, PNG, WEBP, or GIF.");
+      return;
+    }
+    if (file.size > LOGO_MAX_BYTES) {
+      setFormError("Logo must be smaller than 5MB.");
+      return;
+    }
+    revokeLogoPreview();
+    const url = URL.createObjectURL(file);
+    logoObjectUrlRef.current = url;
+    setLogoFile(file);
+    setLogoPreview(url);
+    setRemoveLogo(false);
+  };
+
+  const handleRemoveLogo = () => {
+    revokeLogoPreview();
+    setLogoFile(null);
+    setLogoPreview(null);
+    setRemoveLogo(true);
+  };
+
+  useEffect(() => revokeLogoPreview, []);
 
   const [deleteTarget, setDeleteTarget] = useState<Team | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -105,6 +155,10 @@ function TeamsPageContent() {
     setCompanyId(companyIdFilter ?? "");
     setIsActive(true);
     setFormError(null);
+    revokeLogoPreview();
+    setLogoFile(null);
+    setLogoPreview(null);
+    setRemoveLogo(false);
     setDialogOpen(true);
   };
 
@@ -115,6 +169,10 @@ function TeamsPageContent() {
     setCompanyId(team.company_id);
     setIsActive(team.is_active);
     setFormError(null);
+    revokeLogoPreview();
+    setLogoFile(null);
+    setLogoPreview(team.logo_url);
+    setRemoveLogo(false);
     setDialogOpen(true);
   };
 
@@ -124,23 +182,44 @@ function TeamsPageContent() {
     setFormError(null);
     setSubmitting(true);
     try {
-      if (editingTeam) {
-        await teamsApi.update(token, editingTeam.id, {
-          name,
-          description: description.trim() || null,
-          is_active: isActive,
-        });
-      } else {
-        await teamsApi.create(token, {
-          name,
-          company_id: companyId,
-          description: description.trim() || undefined,
-        });
+      const team = editingTeam
+        ? await teamsApi.update(token, editingTeam.id, {
+            name,
+            description: description.trim() || null,
+            is_active: isActive,
+            // Only send logo_url when clearing it; a fresh upload sets it below.
+            ...(removeLogo ? { logo_url: null } : {}),
+          })
+        : await teamsApi.create(token, {
+            name,
+            company_id: companyId,
+            description: description.trim() || undefined,
+          });
+
+      // The image is a separate multipart call, once the team has an id.
+      // Reported on its own so a create still counts if only the logo fails.
+      if (logoFile) {
+        try {
+          await teamsApi.uploadLogo(token, team.id, logoFile);
+        } catch (err) {
+          load();
+          setFormError(
+            err instanceof Error
+              ? `Team saved, but the logo didn't upload: ${err.message}`
+              : "Team saved, but the logo didn't upload.",
+          );
+          return;
+        }
       }
+
       setDialogOpen(false);
       setEditingTeam(null);
       setName("");
       setDescription("");
+      revokeLogoPreview();
+      setLogoFile(null);
+      setLogoPreview(null);
+      setRemoveLogo(false);
       load();
     } catch (err) {
       setFormError(
@@ -242,9 +321,18 @@ function TeamsPageContent() {
                 {state.teams.map((team) => (
                   <TableRow key={team.id} hover>
                     <TableCell>
-                      <MuiLink component={Link} href={`/teams/${team.id}`} underline="hover">
-                        {team.name}
-                      </MuiLink>
+                      <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
+                        <Avatar
+                          src={team.logo_url ?? undefined}
+                          variant="rounded"
+                          sx={{ width: 32, height: 32, bgcolor: "action.hover", color: "text.secondary" }}
+                        >
+                          {!team.logo_url && <GroupsIcon fontSize="small" />}
+                        </Avatar>
+                        <MuiLink component={Link} href={`/teams/${team.id}`} underline="hover">
+                          {team.name}
+                        </MuiLink>
+                      </Stack>
                     </TableCell>
                     <TableCell>
                       <Typography color="text.secondary" variant="body2">
@@ -299,6 +387,54 @@ function TeamsPageContent() {
           <DialogContent>
             <Stack spacing={2}>
               {formError && <Alert severity="error">{formError}</Alert>}
+
+              <Stack spacing={1} sx={{ alignItems: "center" }}>
+                <Box sx={{ position: "relative" }}>
+                  <Avatar
+                    src={logoPreview ?? undefined}
+                    variant="rounded"
+                    sx={{ width: 72, height: 72, bgcolor: "action.hover", color: "text.secondary" }}
+                  >
+                    {!logoPreview && <GroupsIcon />}
+                  </Avatar>
+                  <IconButton
+                    aria-label="Upload logo"
+                    size="small"
+                    onClick={() => logoInputRef.current?.click()}
+                    sx={{
+                      position: "absolute",
+                      right: -6,
+                      bottom: -6,
+                      bgcolor: "background.paper",
+                      border: 1,
+                      borderColor: "divider",
+                      "&:hover": { bgcolor: "background.paper" },
+                    }}
+                  >
+                    <CameraAltIcon fontSize="small" />
+                  </IconButton>
+                  <input
+                    ref={logoInputRef}
+                    type="file"
+                    accept={LOGO_ALLOWED_TYPES.join(",")}
+                    hidden
+                    onChange={(e) => {
+                      handleLogoPicked(e.target.files?.[0]);
+                      e.target.value = ""; // allow re-picking the same file
+                    }}
+                  />
+                </Box>
+                {logoPreview ? (
+                  <Button size="small" color="inherit" onClick={handleRemoveLogo}>
+                    Remove logo
+                  </Button>
+                ) : (
+                  <Typography variant="caption" color="text.secondary">
+                    Logo (optional)
+                  </Typography>
+                )}
+              </Stack>
+
               {!editingTeam &&
                 (companies.length === 0 ? (
                   <Alert severity="info">Create a company first before adding teams.</Alert>

@@ -32,6 +32,14 @@ export const companiesApi = {
   update: (token: string, id: string, payload: CompanyUpdate) =>
     apiClient.patch<Company>(`/companies/${id}`, payload, { headers: authHeaders(token) }),
 
+  uploadLogo: (token: string, id: string, file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return apiClient.upload<Company>(`/companies/${id}/logo`, formData, {
+      headers: authHeaders(token),
+    });
+  },
+
   remove: (token: string, id: string) =>
     apiClient.delete<{ message: string }>(`/companies/${id}`, {
       headers: authHeaders(token),

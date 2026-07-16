@@ -47,6 +47,14 @@ export const teamsApi = {
   update: (token: string, id: string, payload: TeamUpdate) =>
     apiClient.patch<Team>(`/teams/${id}`, payload, { headers: authHeaders(token) }),
 
+  uploadLogo: (token: string, id: string, file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return apiClient.upload<Team>(`/teams/${id}/logo`, formData, {
+      headers: authHeaders(token),
+    });
+  },
+
   remove: (token: string, id: string) =>
     apiClient.delete<{ message: string }>(`/teams/${id}`, { headers: authHeaders(token) }),
 

@@ -19,8 +19,8 @@ import {
   SORT_OPTIONS,
   STATUS_OPTIONS,
   dueParams,
-} from "./task-meta";
-import type { DuePreset } from "./task-meta";
+} from "@/lib/tasks/task-meta";
+import type { DuePreset } from "@/lib/tasks/task-meta";
 import type { Membership } from "@/types/membership";
 import type {
   TaskCategory,
@@ -89,16 +89,20 @@ export function TaskFilterBar({
   currentUserId,
   total,
   loading,
+  // The cross-team "My Tasks" view is always scoped to the caller, so its bar
+  // hides the assignee dropdown (and needs no member list).
+  showAssignee = true,
 }: {
   filters: TaskFilterState;
   onChange: (next: TaskFilterState) => void;
   /** The raw input. Debounced by the parent before it becomes a request. */
   search: string;
   onSearchChange: (value: string) => void;
-  members: Membership[];
-  currentUserId: string;
+  members?: Membership[];
+  currentUserId?: string;
   total: number;
   loading: boolean;
+  showAssignee?: boolean;
 }) {
   const set = <K extends keyof TaskFilterState>(key: K, value: TaskFilterState[K]) =>
     onChange({ ...filters, [key]: value });
@@ -185,22 +189,24 @@ export function TaskFilterBar({
             ))}
           </TextField>
 
-          <TextField
-            select
-            size="small"
-            label="Assignee"
-            value={filters.assigneeId}
-            onChange={(e) => set("assigneeId", e.target.value)}
-            sx={{ minWidth: 180 }}
-          >
-            <MenuItem value="">Anyone</MenuItem>
-            {members.map(({ user }) => (
-              <MenuItem key={user.id} value={user.id}>
-                {user.full_name || user.email}
-                {user.id === currentUserId ? " (you)" : ""}
-              </MenuItem>
-            ))}
-          </TextField>
+          {showAssignee && (
+            <TextField
+              select
+              size="small"
+              label="Assignee"
+              value={filters.assigneeId}
+              onChange={(e) => set("assigneeId", e.target.value)}
+              sx={{ minWidth: 180 }}
+            >
+              <MenuItem value="">Anyone</MenuItem>
+              {(members ?? []).map(({ user }) => (
+                <MenuItem key={user.id} value={user.id}>
+                  {user.full_name || user.email}
+                  {user.id === currentUserId ? " (you)" : ""}
+                </MenuItem>
+              ))}
+            </TextField>
+          )}
 
           <TextField
             select

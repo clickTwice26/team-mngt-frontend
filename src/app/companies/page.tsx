@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Alert from "@mui/material/Alert";
+import Avatar from "@mui/material/Avatar";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
@@ -28,6 +29,8 @@ import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import AddIcon from "@mui/icons-material/Add";
+import BusinessIcon from "@mui/icons-material/Business";
+import CameraAltIcon from "@mui/icons-material/CameraAlt";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import ManageAccountsIcon from "@mui/icons-material/ManageAccounts";
@@ -37,6 +40,9 @@ import { useAuth } from "@/context/auth-context";
 import { ApiError } from "@/lib/api/client";
 import { companiesApi } from "@/lib/api/companies";
 import type { Company } from "@/types/company";
+
+const LOGO_ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+const LOGO_MAX_BYTES = 5 * 1024 * 1024; // 5 MB — matches the backend ceiling
 
 type State =
   | { kind: "loading" }
@@ -55,6 +61,52 @@ export default function CompaniesPage() {
   const [isActive, setIsActive] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  // Logo staged in the dialog until save. `logoFile` is a newly picked image to
+  // upload; `logoPreview` is what the picker shows (an existing URL, a blob:
+  // preview, or null); `removeLogo` clears an existing one on save.
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [removeLogo, setRemoveLogo] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  // Tracks the blob: URL we created for a preview so we can revoke exactly it.
+  const logoObjectUrlRef = useRef<string | null>(null);
+
+  const revokeLogoPreview = () => {
+    if (logoObjectUrlRef.current) {
+      URL.revokeObjectURL(logoObjectUrlRef.current);
+      logoObjectUrlRef.current = null;
+    }
+  };
+
+  const handleLogoPicked = (file: File | undefined) => {
+    if (!file) return;
+    setFormError(null);
+    if (!LOGO_ALLOWED_TYPES.includes(file.type)) {
+      setFormError("Unsupported image type. Use JPEG, PNG, WEBP, or GIF.");
+      return;
+    }
+    if (file.size > LOGO_MAX_BYTES) {
+      setFormError("Logo must be smaller than 5MB.");
+      return;
+    }
+    revokeLogoPreview();
+    const url = URL.createObjectURL(file);
+    logoObjectUrlRef.current = url;
+    setLogoFile(file);
+    setLogoPreview(url);
+    setRemoveLogo(false);
+  };
+
+  const handleRemoveLogo = () => {
+    revokeLogoPreview();
+    setLogoFile(null);
+    setLogoPreview(null);
+    setRemoveLogo(true);
+  };
+
+  // Drop any outstanding blob: preview when the component unmounts.
+  useEffect(() => revokeLogoPreview, []);
 
   const [deleteTarget, setDeleteTarget] = useState<Company | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -108,6 +160,10 @@ export default function CompaniesPage() {
     setDescription("");
     setIsActive(true);
     setFormError(null);
+    revokeLogoPreview();
+    setLogoFile(null);
+    setLogoPreview(null);
+    setRemoveLogo(false);
     setDialogOpen(true);
   };
 
@@ -117,6 +173,10 @@ export default function CompaniesPage() {
     setDescription(company.description ?? "");
     setIsActive(company.is_active);
     setFormError(null);
+    revokeLogoPreview();
+    setLogoFile(null);
+    setLogoPreview(company.logo_url);
+    setRemoveLogo(false);
     setDialogOpen(true);
   };
 
@@ -126,22 +186,43 @@ export default function CompaniesPage() {
     setFormError(null);
     setSubmitting(true);
     try {
-      if (editingCompany) {
-        await companiesApi.update(token, editingCompany.id, {
-          name,
-          description: description.trim() || null,
-          is_active: isActive,
-        });
-      } else {
-        await companiesApi.create(token, {
-          name,
-          description: description.trim() || undefined,
-        });
+      const company = editingCompany
+        ? await companiesApi.update(token, editingCompany.id, {
+            name,
+            description: description.trim() || null,
+            is_active: isActive,
+            // Only send logo_url when clearing it; a fresh upload sets it below.
+            ...(removeLogo ? { logo_url: null } : {}),
+          })
+        : await companiesApi.create(token, {
+            name,
+            description: description.trim() || undefined,
+          });
+
+      // The image is a separate multipart call, once the company has an id.
+      // Reported on its own so a create still counts if only the logo fails.
+      if (logoFile) {
+        try {
+          await companiesApi.uploadLogo(token, company.id, logoFile);
+        } catch (err) {
+          load();
+          setFormError(
+            err instanceof Error
+              ? `Company saved, but the logo didn't upload: ${err.message}`
+              : "Company saved, but the logo didn't upload.",
+          );
+          return;
+        }
       }
+
       setDialogOpen(false);
       setEditingCompany(null);
       setName("");
       setDescription("");
+      revokeLogoPreview();
+      setLogoFile(null);
+      setLogoPreview(null);
+      setRemoveLogo(false);
       load();
     } catch (err) {
       setFormError(
@@ -225,13 +306,22 @@ export default function CompaniesPage() {
                 {state.companies.map((company) => (
                   <TableRow key={company.id} hover>
                     <TableCell>
-                      <MuiLink
-                        component={Link}
-                        href={`/teams?company_id=${company.id}`}
-                        underline="hover"
-                      >
-                        {company.name}
-                      </MuiLink>
+                      <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
+                        <Avatar
+                          src={company.logo_url ?? undefined}
+                          variant="rounded"
+                          sx={{ width: 32, height: 32, bgcolor: "action.hover", color: "text.secondary" }}
+                        >
+                          {!company.logo_url && <BusinessIcon fontSize="small" />}
+                        </Avatar>
+                        <MuiLink
+                          component={Link}
+                          href={`/teams?company_id=${company.id}`}
+                          underline="hover"
+                        >
+                          {company.name}
+                        </MuiLink>
+                      </Stack>
                     </TableCell>
                     <TableCell>
                       <Typography color="text.secondary" variant="body2">
@@ -292,6 +382,54 @@ export default function CompaniesPage() {
           <DialogContent>
             <Stack spacing={2}>
               {formError && <Alert severity="error">{formError}</Alert>}
+
+              <Stack spacing={1} sx={{ alignItems: "center" }}>
+                <Box sx={{ position: "relative" }}>
+                  <Avatar
+                    src={logoPreview ?? undefined}
+                    variant="rounded"
+                    sx={{ width: 72, height: 72, bgcolor: "action.hover", color: "text.secondary" }}
+                  >
+                    {!logoPreview && <BusinessIcon />}
+                  </Avatar>
+                  <IconButton
+                    aria-label="Upload logo"
+                    size="small"
+                    onClick={() => logoInputRef.current?.click()}
+                    sx={{
+                      position: "absolute",
+                      right: -6,
+                      bottom: -6,
+                      bgcolor: "background.paper",
+                      border: 1,
+                      borderColor: "divider",
+                      "&:hover": { bgcolor: "background.paper" },
+                    }}
+                  >
+                    <CameraAltIcon fontSize="small" />
+                  </IconButton>
+                  <input
+                    ref={logoInputRef}
+                    type="file"
+                    accept={LOGO_ALLOWED_TYPES.join(",")}
+                    hidden
+                    onChange={(e) => {
+                      handleLogoPicked(e.target.files?.[0]);
+                      e.target.value = ""; // allow re-picking the same file
+                    }}
+                  />
+                </Box>
+                {logoPreview ? (
+                  <Button size="small" color="inherit" onClick={handleRemoveLogo}>
+                    Remove logo
+                  </Button>
+                ) : (
+                  <Typography variant="caption" color="text.secondary">
+                    Logo (optional)
+                  </Typography>
+                )}
+              </Stack>
+
               <TextField
                 label="Name"
                 value={name}

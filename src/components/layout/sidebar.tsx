@@ -17,6 +17,7 @@ import { useTheme } from "@mui/material/styles";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import AccountCircleIcon from "@mui/icons-material/AccountCircle";
 import ApartmentIcon from "@mui/icons-material/Apartment";
+import AssignmentIndIcon from "@mui/icons-material/AssignmentInd";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import GroupsIcon from "@mui/icons-material/Groups";
 import PeopleAltIcon from "@mui/icons-material/PeopleAlt";
@@ -34,6 +35,7 @@ interface NavItem {
 
 const MAIN_NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: <DashboardIcon /> },
+  { label: "My Tasks", href: "/tasks", icon: <AssignmentIndIcon /> },
   { label: "Teams", href: "/teams", icon: <GroupsIcon /> },
 ];
 

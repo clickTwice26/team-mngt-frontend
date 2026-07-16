@@ -5,6 +5,7 @@ export interface Team {
   name: string;
   company_id: string;
   description: string | null;
+  logo_url: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -21,6 +22,8 @@ export interface TeamUpdate {
   name?: string;
   description?: string | null;
   is_active?: boolean;
+  /** Set to null to remove the logo; the image itself is set via uploadLogo. */
+  logo_url?: string | null;
 }
 
 export interface Page<T> {

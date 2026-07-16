@@ -4,6 +4,7 @@ export interface Company {
   id: string;
   name: string;
   description: string | null;
+  logo_url: string | null;
   is_active: boolean;
   created_by: string;
   created_at: string;
@@ -20,4 +21,6 @@ export interface CompanyUpdate {
   name?: string;
   description?: string | null;
   is_active?: boolean;
+  /** Set to null to remove the logo; the image itself is set via uploadLogo. */
+  logo_url?: string | null;
 }

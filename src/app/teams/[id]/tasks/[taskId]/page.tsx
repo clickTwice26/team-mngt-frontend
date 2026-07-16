@@ -34,7 +34,7 @@ import {
   STATUS_LABELS,
   formatDeadline,
   isOverdue,
-} from "../../_components/task-meta";
+} from "@/lib/tasks/task-meta";
 
 type State =
   | { kind: "loading" }

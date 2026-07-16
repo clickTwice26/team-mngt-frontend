@@ -44,8 +44,8 @@ import {
   TaskFilterBar,
   hasActiveFilters,
   toListParams,
-} from "./task-filters";
-import type { TaskFilterState } from "./task-filters";
+} from "@/components/tasks/task-filter-bar";
+import type { TaskFilterState } from "@/components/tasks/task-filter-bar";
 import {
   CATEGORY_COLORS,
   CATEGORY_LABELS,
@@ -58,7 +58,7 @@ import {
   STATUS_OPTIONS,
   formatDeadline,
   isOverdue,
-} from "./task-meta";
+} from "@/lib/tasks/task-meta";
 import type { Membership, MembershipUser } from "@/types/membership";
 import type {
   Task,
