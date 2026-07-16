@@ -80,7 +80,14 @@ export default function MyTasksPage() {
     if (!token) return;
     setState({ kind: "loading" });
     tasksApi
-      .listAssigned(token, { ...toListParams(filters, query), limit: PAGE_SIZE, offset })
+      .listAssigned(token, {
+        ...toListParams(filters, query),
+        // Hide completed by default. Choosing a specific status (e.g. "Done")
+        // still shows exactly that status, so done tasks stay reachable.
+        excludeDone: filters.status === "all" ? true : undefined,
+        limit: PAGE_SIZE,
+        offset,
+      })
       .then((page) => {
         // Stepped past the end (e.g. after the list shrank) — walk back.
         if (page.items.length === 0 && page.total > 0 && offset >= page.total) {
@@ -162,7 +169,7 @@ export default function MyTasksPage() {
             <Typography color="text.secondary">
               {filtersActive
                 ? "No tasks match these filters."
-                : "You have no assigned tasks. Tasks assigned to you on any team show up here."}
+                : "No active tasks assigned to you. Completed tasks are hidden — pick “Done” in the Status filter to see them."}
             </Typography>
           </Paper>
         )}

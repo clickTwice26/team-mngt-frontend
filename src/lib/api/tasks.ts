@@ -20,6 +20,7 @@ export const tasksApi = {
     if (params?.dueTo) query.set("due_to", params.dueTo);
     if (params?.dueUnset) query.set("due_unset", "true");
     if (params?.overdue) query.set("overdue", "true");
+    if (params?.excludeDone) query.set("exclude_done", "true");
     if (params?.sort) query.set("sort", params.sort);
     if (params?.limit != null) query.set("limit", String(params.limit));
     if (params?.offset != null) query.set("offset", String(params.offset));

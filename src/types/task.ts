@@ -33,6 +33,8 @@ export interface TaskListParams {
   dueUnset?: boolean;
   /** Deadline passed and not done — matches `isOverdue`. */
   overdue?: boolean;
+  /** Hide done tasks (used by "My Tasks" to hide completed by default). */
+  excludeDone?: boolean;
   sort?: TaskSort;
   limit?: number;
   offset?: number;
