@@ -1,11 +1,12 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import NextLink from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Alert from "@mui/material/Alert";
 import Autocomplete from "@mui/material/Autocomplete";
 import Avatar from "@mui/material/Avatar";
+import Badge from "@mui/material/Badge";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
@@ -82,6 +83,8 @@ function TeamDetailPageContent() {
   // The server decides who may read the log (founders of the company, plus the
   // developer). Asking it beats guessing, and means the tab never 403s.
   const [canViewLogs, setCanViewLogs] = useState(false);
+  // Unread discussion messages, shown as a badge on the Discussion tab.
+  const [unread, setUnread] = useState(0);
 
   const isHourlyMember = myMembership?.work.mode === "hourly";
   // Anyone on the team can schedule and join a meeting, so the tab is for
@@ -145,6 +148,40 @@ function TeamDetailPageContent() {
       .catch(() => setCanViewLogs(false));
   }, [token, id, user]);
 
+  // Keep the Discussion tab's unread badge current. Opening the tab (or leaving
+  // it, having seen everything) marks the discussion read and clears the badge;
+  // on any other tab we refresh the count. This runs on mount and every tab
+  // switch, so navigating between tabs picks up messages posted meanwhile.
+  const prevTabRef = useRef<TabKey>(tab);
+  useEffect(() => {
+    if (!token) return;
+    const wasDiscussion = prevTabRef.current === "discussion";
+    prevTabRef.current = tab;
+
+    let cancelled = false;
+    void (async () => {
+      if (tab === "discussion") {
+        // Opened the discussion → everything is now read. (setState only after
+        // the await, so this never triggers a synchronous cascading render.)
+        await teamsApi.markDiscussionRead(token, id).catch(() => {});
+        if (!cancelled) setUnread(0);
+        return;
+      }
+      // Just left the discussion → we've seen everything; stamp it so the count
+      // we fetch back reads 0 rather than re-counting what we just saw.
+      if (wasDiscussion) await teamsApi.markDiscussionRead(token, id).catch(() => {});
+      try {
+        const { count } = await teamsApi.discussionUnread(token, id);
+        if (!cancelled) setUnread(count);
+      } catch {
+        // A transient failure just leaves the badge as-is.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, id, tab]);
+
   if (authLoading || !user || teamState.kind === "loading") {
     return (
       <AppShell>
@@ -194,7 +231,21 @@ function TeamDetailPageContent() {
           <Tab value="tasks" label="Tasks" />
           {isHourlyMember && <Tab value="hours" label="My Hours" />}
           <Tab value="meetings" label="Meetings" />
-          <Tab value="discussion" label="Discussion" />
+          <Tab
+            value="discussion"
+            label={
+              <Badge
+                color="error"
+                badgeContent={unread}
+                max={99}
+                sx={{ "& .MuiBadge-badge": { right: -3, top: -2 } }}
+              >
+                <Box component="span" sx={{ pr: unread > 0 ? 1.5 : 0 }}>
+                  Discussion
+                </Box>
+              </Badge>
+            }
+          />
           {canViewLogs && <Tab value="logs" label="Logs" />}
         </Tabs>
 

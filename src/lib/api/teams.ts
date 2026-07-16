@@ -346,6 +346,19 @@ export const teamsApi = {
       headers: authHeaders(token),
     }),
 
+  /** Unread discussion messages for the current user — the tab badge count. */
+  discussionUnread: (token: string, teamId: string) =>
+    apiClient.get<{ count: number }>(`/teams/${teamId}/discussion/unread`, {
+      cache: "no-store",
+      headers: authHeaders(token),
+    }),
+
+  /** Mark the discussion read up to now, clearing the unread badge. */
+  markDiscussionRead: (token: string, teamId: string) =>
+    apiClient.post<void>(`/teams/${teamId}/discussion/read`, undefined, {
+      headers: authHeaders(token),
+    }),
+
   createDiscussionMessage: (
     token: string,
     teamId: string,
