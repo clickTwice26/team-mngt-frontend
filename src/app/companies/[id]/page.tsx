@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import Alert from "@mui/material/Alert";
@@ -37,6 +37,7 @@ import Tabs from "@mui/material/Tabs";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import AddIcon from "@mui/icons-material/Add";
+import CameraAltIcon from "@mui/icons-material/CameraAlt";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 
@@ -164,6 +165,9 @@ export default function CompanyDetailPage() {
 
 // --- Overview ------------------------------------------------------------------
 
+const LOGO_ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+const LOGO_MAX_BYTES = 5 * 1024 * 1024;
+
 function CompanyOverviewTab({
   company,
   token,
@@ -180,18 +184,76 @@ function CompanyOverviewTab({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
+  // Logo changes are staged locally and only sent when the form is saved.
+  const [stagedFile, setStagedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [removeLogo, setRemoveLogo] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Revoke the object URL on unmount to avoid leaking it.
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
+  const logoSrc = previewUrl ?? (removeLogo ? undefined : company.logo_url ?? undefined);
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = ""; // allow re-selecting the same file later
+    if (!file) return;
+
+    if (!LOGO_ALLOWED_TYPES.includes(file.type)) {
+      setError("Use a JPEG, PNG, WEBP, or GIF image.");
+      return;
+    }
+    if (file.size > LOGO_MAX_BYTES) {
+      setError("Logo must be smaller than 5MB.");
+      return;
+    }
+
+    setError(null);
+    setRemoveLogo(false);
+    setPreviewUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return URL.createObjectURL(file);
+    });
+    setStagedFile(file);
+  };
+
+  const handleRemoveLogo = () => {
+    setStagedFile(null);
+    setPreviewUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return null;
+    });
+    setRemoveLogo(true);
+  };
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
     setSuccess(false);
     setSubmitting(true);
     try {
-      const updated = await companiesApi.update(token, company.id, {
+      let updated = await companiesApi.update(token, company.id, {
         name,
         description: description.trim() || null,
         is_active: isActive,
+        // Clearing the logo goes through update; a new upload is sent below.
+        ...(removeLogo ? { logo_url: null } : {}),
       });
+      if (stagedFile) {
+        updated = await companiesApi.uploadLogo(token, company.id, stagedFile);
+      }
       onSaved(updated);
+      setStagedFile(null);
+      setRemoveLogo(false);
+      setPreviewUrl((current) => {
+        if (current) URL.revokeObjectURL(current);
+        return null;
+      });
       setSuccess(true);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to save company.");
@@ -209,6 +271,67 @@ function CompanyOverviewTab({
             Company updated successfully.
           </Alert>
         )}
+        <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
+          <Box sx={{ position: "relative", width: 96, height: 96 }}>
+            <Avatar
+              variant="rounded"
+              src={logoSrc}
+              sx={{ width: 96, height: 96, fontSize: 36, bgcolor: "secondary.main" }}
+            >
+              {company.name.charAt(0).toUpperCase()}
+            </Avatar>
+            <IconButton
+              onClick={() => fileInputRef.current?.click()}
+              disabled={submitting}
+              aria-label="Change company logo"
+              size="small"
+              sx={{
+                position: "absolute",
+                bottom: -8,
+                right: -8,
+                bgcolor: "primary.main",
+                color: "primary.contrastText",
+                "&:hover": { bgcolor: "primary.dark" },
+              }}
+            >
+              <CameraAltIcon fontSize="small" />
+            </IconButton>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={LOGO_ALLOWED_TYPES.join(",")}
+              hidden
+              onChange={handleFileChange}
+            />
+          </Box>
+          <Stack spacing={0.5}>
+            <Typography variant="subtitle2">Company logo</Typography>
+            {stagedFile ? (
+              <Typography variant="caption" color="text.secondary">
+                New logo selected — click Save to apply.
+              </Typography>
+            ) : removeLogo ? (
+              <Typography variant="caption" color="text.secondary">
+                Logo will be removed on Save.
+              </Typography>
+            ) : (
+              <Typography variant="caption" color="text.secondary">
+                JPEG, PNG, WEBP, or GIF. Max 5MB.
+              </Typography>
+            )}
+            {logoSrc && (
+              <Button
+                size="small"
+                color="error"
+                onClick={handleRemoveLogo}
+                disabled={submitting}
+                sx={{ alignSelf: "flex-start" }}
+              >
+                Remove
+              </Button>
+            )}
+          </Stack>
+        </Stack>
         <TextField
           label="Name"
           value={name}

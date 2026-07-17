@@ -20,6 +20,15 @@ export const companiesApi = {
     });
   },
 
+  /** The companies the caller founded. Empty for everyone who founded none, so
+   * it doubles as the "may I manage teams?" signal — founder-ness isn't on the
+   * user record, only the server can answer it. */
+  listFounded: (token: string) =>
+    apiClient.get<Company[]>("/companies/founded", {
+      cache: "no-store",
+      headers: authHeaders(token),
+    }),
+
   get: (token: string, id: string) =>
     apiClient.get<Company>(`/companies/${id}`, {
       cache: "no-store",

@@ -59,6 +59,11 @@ function TeamsPageContent() {
 
   const [state, setState] = useState<State>({ kind: "loading" });
   const [companies, setCompanies] = useState<Company[]>([]);
+  // The companies this user founded. A founder manages their own company's teams
+  // (create and edit — deleting stays super-admin only), and founder-ness isn't
+  // on the user record, so the server has to tell us. Always empty for a super
+  // admin, who reaches every company via `companies` instead.
+  const [foundedCompanies, setFoundedCompanies] = useState<Company[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTeam, setEditingTeam] = useState<Team | null>(null);
   const [name, setName] = useState("");
@@ -140,19 +145,30 @@ function TeamsPageContent() {
   }, [token, companyIdFilter]);
 
   useEffect(() => {
-    if (token && user?.is_super_admin) {
+    if (!token) return;
+    if (user?.is_super_admin) {
       companiesApi
         .list(token, { limit: 200 })
         .then((page) => setCompanies(page.items))
         .catch(() => setCompanies([]));
+      return;
     }
+    // Not an admin: the only teams they can manage are their own company's.
+    companiesApi
+      .listFounded(token)
+      .then(setFoundedCompanies)
+      .catch(() => setFoundedCompanies([]));
   }, [token, user?.is_super_admin]);
 
   const openCreateDialog = () => {
     setEditingTeam(null);
     setName("");
     setDescription("");
-    setCompanyId(companyIdFilter ?? "");
+    // With only one company to choose from — the common case for a founder —
+    // preselect it rather than making them open a single-item dropdown.
+    setCompanyId(
+      companyIdFilter ?? (companyOptions.length === 1 ? companyOptions[0].id : ""),
+    );
     setIsActive(true);
     setFormError(null);
     revokeLogoPreview();
@@ -247,6 +263,19 @@ function TeamsPageContent() {
     }
   };
 
+  // Who may do what, mirroring the server's rules. These only decide what to
+  // *offer* — the API enforces the same thing, and is the actual gate.
+  const isSuperAdmin = Boolean(user?.is_super_admin);
+  const foundedCompanyIds = new Set(foundedCompanies.map((c) => c.id));
+  const canCreateTeam = isSuperAdmin || foundedCompanies.length > 0;
+  const canEditTeam = (team: Team) =>
+    isSuperAdmin || foundedCompanyIds.has(team.company_id);
+  // Deleting is deliberately narrower than editing: super admins only.
+  const canDeleteTeam = isSuperAdmin;
+  const showActions = canCreateTeam;
+  // Whichever set of companies this user may create a team under.
+  const companyOptions = isSuperAdmin ? companies : foundedCompanies;
+
   if (authLoading || !user) {
     return (
       <AppShell>
@@ -281,7 +310,7 @@ function TeamsPageContent() {
               />
             )}
           </Stack>
-          {user.is_super_admin && (
+          {canCreateTeam && (
             <Button variant="contained" startIcon={<AddIcon />} onClick={openCreateDialog}>
               New Team
             </Button>
@@ -300,7 +329,7 @@ function TeamsPageContent() {
         {state.kind === "ok" && state.teams.length === 0 && (
           <Paper variant="outlined" sx={{ p: 4, textAlign: "center" }}>
             <Typography color="text.secondary">
-              No teams yet. {user.is_super_admin && 'Click "New Team" to create one.'}
+              No teams yet. {canCreateTeam && 'Click "New Team" to create one.'}
             </Typography>
           </Paper>
         )}
@@ -314,7 +343,7 @@ function TeamsPageContent() {
                   <TableCell>Description</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell>Created</TableCell>
-                  {user.is_super_admin && <TableCell align="right">Actions</TableCell>}
+                  {showActions && <TableCell align="right">Actions</TableCell>}
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -352,25 +381,32 @@ function TeamsPageContent() {
                         {new Date(team.created_at).toLocaleDateString()}
                       </Typography>
                     </TableCell>
-                    {user.is_super_admin && (
+                    {/* The cell itself is tied to the column header, not to the
+                        row's permissions — a founder with a team they can't edit
+                        still needs the cell, or the row loses a column. */}
+                    {showActions && (
                       <TableCell align="right">
-                        <IconButton
-                          aria-label={`Edit ${team.name}`}
-                          size="small"
-                          onClick={() => openEditDialog(team)}
-                        >
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                        <IconButton
-                          aria-label={`Delete ${team.name}`}
-                          size="small"
-                          onClick={() => {
-                            setDeleteError(null);
-                            setDeleteTarget(team);
-                          }}
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
+                        {canEditTeam(team) && (
+                          <IconButton
+                            aria-label={`Edit ${team.name}`}
+                            size="small"
+                            onClick={() => openEditDialog(team)}
+                          >
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                        )}
+                        {canDeleteTeam && (
+                          <IconButton
+                            aria-label={`Delete ${team.name}`}
+                            size="small"
+                            onClick={() => {
+                              setDeleteError(null);
+                              setDeleteTarget(team);
+                            }}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        )}
                       </TableCell>
                     )}
                   </TableRow>
@@ -436,8 +472,12 @@ function TeamsPageContent() {
               </Stack>
 
               {!editingTeam &&
-                (companies.length === 0 ? (
-                  <Alert severity="info">Create a company first before adding teams.</Alert>
+                (companyOptions.length === 0 ? (
+                  <Alert severity="info">
+                    {isSuperAdmin
+                      ? "Create a company first before adding teams."
+                      : "You can only add teams to a company you founded."}
+                  </Alert>
                 ) : (
                   <TextField
                     select
@@ -447,7 +487,7 @@ function TeamsPageContent() {
                     required
                     fullWidth
                   >
-                    {companies.map((c) => (
+                    {companyOptions.map((c) => (
                       <MenuItem key={c.id} value={c.id}>
                         {c.name}
                       </MenuItem>
