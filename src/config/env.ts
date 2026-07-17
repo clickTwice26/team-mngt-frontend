@@ -31,6 +31,13 @@ export const env = {
     projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ?? "",
     appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID ?? "",
   },
+  /**
+   * Cloudflare Turnstile site key (Cloudflare dashboard > Turnstile). A public
+   * client identifier, safe to ship in the browser bundle — the paired secret
+   * key lives on the backend as TURNSTILE_SECRET_KEY. Empty disables the login
+   * captcha.
+   */
+  turnstileSiteKey: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "",
 } as const;
 
 export const apiBaseUrl = `${env.apiUrl}/api/${env.apiVersion}`;

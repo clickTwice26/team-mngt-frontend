@@ -83,4 +83,6 @@ export interface RegisterPayload {
 export interface LoginPayload {
   email: string;
   password: string;
+  /** Cloudflare Turnstile response token; omitted when the captcha is disabled. */
+  captcha_token?: string;
 }

@@ -229,26 +229,57 @@ export default function Home() {
           borderColor: "divider",
         }}
       >
-        <Container maxWidth="lg" disableGutters>
-          <Toolbar>
-            <GroupsIcon color="primary" sx={{ mr: 1.5 }} />
-            <Typography
-              variant="h6"
+        <Container maxWidth="lg">
+          <Toolbar disableGutters sx={{ minHeight: { xs: 64, md: 72 } }}>
+            <Stack
+              direction="row"
+              spacing={1.25}
               component={Link}
               href="/"
-              noWrap
-              sx={{ color: "text.primary", textDecoration: "none" }}
+              sx={{ alignItems: "center", textDecoration: "none" }}
             >
-              TeamUp
-            </Typography>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 34,
+                  height: 34,
+                  borderRadius: 1.5,
+                  color: "primary.main",
+                  bgcolor: (theme) => alpha(theme.palette.primary.main, 0.12),
+                }}
+              >
+                <GroupsIcon fontSize="small" />
+              </Box>
+              <Typography
+                variant="h6"
+                noWrap
+                sx={{ color: "text.primary", fontWeight: 700, letterSpacing: "-0.01em" }}
+              >
+                TeamUp
+              </Typography>
+            </Stack>
 
             <Stack
               direction="row"
-              spacing={1}
-              sx={{ flexGrow: 1, ml: 4, display: { xs: "none", md: "flex" } }}
+              spacing={0.5}
+              sx={{ flexGrow: 1, ml: 5, display: { xs: "none", md: "flex" } }}
             >
               {navLinks.map((link) => (
-                <Button key={link.href} href={link.href} color="inherit" size="small">
+                <Button
+                  key={link.href}
+                  href={link.href}
+                  disableRipple
+                  sx={{
+                    px: 1.5,
+                    color: "text.secondary",
+                    fontWeight: 500,
+                    textTransform: "none",
+                    fontSize: "0.9375rem",
+                    "&:hover": { color: "text.primary", bgcolor: "transparent" },
+                  }}
+                >
                   {link.label}
                 </Button>
               ))}
@@ -256,17 +287,38 @@ export default function Home() {
             <Box sx={{ flexGrow: 1, display: { xs: "block", md: "none" } }} />
 
             {loading ? (
-              <Skeleton variant="rounded" width={150} height={36} />
+              <Skeleton variant="rounded" width={150} height={38} />
             ) : isAuthenticated ? (
-              <Button variant="contained" component={Link} href="/dashboard">
+              <Button
+                variant="contained"
+                disableElevation
+                component={Link}
+                href="/dashboard"
+                sx={{ textTransform: "none", fontWeight: 600, borderRadius: 2, px: 2.5 }}
+              >
                 Go to dashboard
               </Button>
             ) : (
-              <Stack direction="row" spacing={1}>
-                <Button component={Link} href="/login">
+              <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                <Button
+                  component={Link}
+                  href="/login"
+                  sx={{
+                    color: "text.primary",
+                    fontWeight: 600,
+                    textTransform: "none",
+                    "&:hover": { bgcolor: (theme) => alpha(theme.palette.text.primary, 0.06) },
+                  }}
+                >
                   Sign in
                 </Button>
-                <Button variant="contained" component={Link} href="/register">
+                <Button
+                  variant="contained"
+                  disableElevation
+                  component={Link}
+                  href="/register"
+                  sx={{ textTransform: "none", fontWeight: 600, borderRadius: 2, px: 2.5 }}
+                >
                   Sign up
                 </Button>
               </Stack>

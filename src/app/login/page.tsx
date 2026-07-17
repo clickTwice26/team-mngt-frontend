@@ -14,6 +14,7 @@ import Typography from "@mui/material/Typography";
 
 import { AuthCard } from "@/components/auth-card";
 import { GoogleSignInButton } from "@/components/google-sign-in-button";
+import { TurnstileWidget, turnstileConfigured } from "@/components/turnstile-widget";
 import { useAuth } from "@/context/auth-context";
 
 export default function LoginPage() {
@@ -25,6 +26,15 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Turnstile token, and a key we bump to remount the widget for a fresh
+  // challenge — the token is single-use, so a failed attempt needs a new one.
+  const [captchaToken, setCaptchaToken] = useState("");
+  const [captchaKey, setCaptchaKey] = useState(0);
+  const resetCaptcha = () => {
+    setCaptchaToken("");
+    setCaptchaKey((key) => key + 1);
+  };
+
   useEffect(() => {
     if (!loading && isAuthenticated) router.replace("/dashboard");
   }, [loading, isAuthenticated, router]);
@@ -34,10 +44,12 @@ export default function LoginPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await login({ email, password });
+      await login({ email, password, captcha_token: captchaToken || undefined });
       router.replace("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed.");
+      // The token Cloudflare handed us is spent now — get a fresh one.
+      if (turnstileConfigured) resetCaptcha();
     } finally {
       setSubmitting(false);
     }
@@ -79,12 +91,21 @@ export default function LoginPage() {
             fullWidth
           />
 
+          {turnstileConfigured && (
+            <TurnstileWidget
+              key={captchaKey}
+              onVerify={setCaptchaToken}
+              onExpire={() => setCaptchaToken("")}
+              onError={() => setCaptchaToken("")}
+            />
+          )}
+
           <Button
             type="submit"
             variant="contained"
             size="large"
             fullWidth
-            disabled={submitting}
+            disabled={submitting || (turnstileConfigured && !captchaToken)}
           >
             {submitting ? "Signing in…" : "Sign in"}
           </Button>
