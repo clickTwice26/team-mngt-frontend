@@ -78,12 +78,13 @@ export function TasksTab({
   team,
   token,
   currentUserId,
-  isSuperAdmin,
+  isDeveloper,
 }: {
   team: Team;
   token: string;
   currentUserId: string;
-  isSuperAdmin: boolean;
+  /** Platform developers may edit/delete any task, not just their own. */
+  isDeveloper: boolean;
 }) {
   type State =
     | { kind: "loading" }
@@ -119,6 +120,9 @@ export function TasksTab({
   const [deleteTarget, setDeleteTarget] = useState<Task | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  // A developer deleting someone else's task is a heavier action, so it's split
+  // into two confirmations. This flips true once they clear the first warning.
+  const [deleteWarned, setDeleteWarned] = useState(false);
   // Whether the "Completed" group is expanded. Done tasks are always pulled out
   // of the active list into their own section; this just hides or shows them.
   // Collapsed by default so finished work stays out of the way until asked for.
@@ -362,13 +366,16 @@ export function TasksTab({
               );
             }
             const task = row.task;
-            const canDelete = isSuperAdmin || task.created_by.id === currentUserId;
+            const isCreator = task.created_by.id === currentUserId;
+            // Editing and deleting a task belong to its creator; a platform
+            // developer may step in on anyone's task. Mirrors TaskService.
+            const canModify = isCreator || isDeveloper;
             // Status is the assignee's to report — mirrors the server rule, which
             // rejects it for anyone else (see TaskService.update_task).
             const canSetStatus = task.assignees.some((a) => a.id === currentUserId);
             // The discussion is private to the submitter and the assignees, so
             // only show the link to someone who'd actually be let in.
-            const isParticipant = canSetStatus || task.created_by.id === currentUserId;
+            const isParticipant = canSetStatus || isCreator;
             const overdue = isOverdue(task);
             return (
               <Paper key={task.id} variant="outlined" sx={{ p: 2 }}>
@@ -411,19 +418,22 @@ export function TasksTab({
                           </IconButton>
                         </Tooltip>
                       )}
-                      <IconButton
-                        size="small"
-                        aria-label={`Edit ${task.title}`}
-                        onClick={() => openEditDialog(task)}
-                      >
-                        <EditIcon fontSize="small" />
-                      </IconButton>
-                      {canDelete && (
+                      {canModify && (
+                        <IconButton
+                          size="small"
+                          aria-label={`Edit ${task.title}`}
+                          onClick={() => openEditDialog(task)}
+                        >
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                      )}
+                      {canModify && (
                         <IconButton
                           size="small"
                           aria-label={`Delete ${task.title}`}
                           onClick={() => {
                             setDeleteError(null);
+                            setDeleteWarned(false);
                             setDeleteTarget(task);
                           }}
                         >
@@ -721,27 +731,55 @@ export function TasksTab({
         fullWidth
         maxWidth="xs"
       >
-        <DialogTitle>Delete task</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2}>
-            {deleteError && <Alert severity="error">{deleteError}</Alert>}
-            <DialogContentText>
-              Are you sure you want to delete <strong>{deleteTarget?.title}</strong>? This
-              can&apos;t be undone.
-            </DialogContentText>
-          </Stack>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setDeleteTarget(null)}>Cancel</Button>
-          <Button
-            color="error"
-            variant="contained"
-            disabled={deleting}
-            onClick={() => void handleDelete()}
-          >
-            {deleting ? "Deleting…" : "Delete"}
-          </Button>
-        </DialogActions>
+        {/* A developer removing a task they didn't create sees an extra warning
+            step first; the second step is the same confirmation everyone gets. */}
+        {deleteTarget && isDeveloper && deleteTarget.created_by.id !== currentUserId && !deleteWarned ? (
+          <>
+            <DialogTitle>You didn&apos;t create this task</DialogTitle>
+            <DialogContent>
+              <Stack spacing={2}>
+                <Alert severity="warning">
+                  You&apos;re about to delete a task using your developer access.
+                </Alert>
+                <DialogContentText>
+                  <strong>{deleteTarget.title}</strong> was submitted by{" "}
+                  {deleteTarget.created_by.full_name || deleteTarget.created_by.email}. Deleting
+                  it removes their work item. Continue only if you&apos;re sure.
+                </DialogContentText>
+              </Stack>
+            </DialogContent>
+            <DialogActions sx={{ px: 3, pb: 2 }}>
+              <Button onClick={() => setDeleteTarget(null)}>Cancel</Button>
+              <Button color="warning" variant="contained" onClick={() => setDeleteWarned(true)}>
+                Continue
+              </Button>
+            </DialogActions>
+          </>
+        ) : (
+          <>
+            <DialogTitle>Delete task</DialogTitle>
+            <DialogContent>
+              <Stack spacing={2}>
+                {deleteError && <Alert severity="error">{deleteError}</Alert>}
+                <DialogContentText>
+                  Are you sure you want to delete <strong>{deleteTarget?.title}</strong>? This
+                  can&apos;t be undone.
+                </DialogContentText>
+              </Stack>
+            </DialogContent>
+            <DialogActions sx={{ px: 3, pb: 2 }}>
+              <Button onClick={() => setDeleteTarget(null)}>Cancel</Button>
+              <Button
+                color="error"
+                variant="contained"
+                disabled={deleting}
+                onClick={() => void handleDelete()}
+              >
+                {deleting ? "Deleting…" : "Delete"}
+              </Button>
+            </DialogActions>
+          </>
+        )}
       </Dialog>
     </Stack>
   );
