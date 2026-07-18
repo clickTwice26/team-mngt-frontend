@@ -275,6 +275,9 @@ function TeamDetailPageContent() {
             token={token!}
             currentUserId={user.id}
             isDeveloper={user.role === "platform_developer"}
+            // Founders and the platform developer may read any task's discussion
+            // — the same audience the server grants the audit log, so reuse it.
+            canJoinAnyDiscussion={canViewLogs}
           />
         )}
         {tab === "discussion" && (

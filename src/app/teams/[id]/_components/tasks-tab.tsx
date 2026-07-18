@@ -79,12 +79,17 @@ export function TasksTab({
   token,
   currentUserId,
   isDeveloper,
+  canJoinAnyDiscussion,
 }: {
   team: Team;
   token: string;
   currentUserId: string;
   /** Platform developers may edit/delete any task, not just their own. */
   isDeveloper: boolean;
+  /** A founder of the team's company (or the platform developer) may read any
+   *  task discussion — the same audience the server lets in. Mirrors
+   *  TaskCommentService, which authorises via `is_company_founder`. */
+  canJoinAnyDiscussion: boolean;
 }) {
   type State =
     | { kind: "loading" }
@@ -373,9 +378,11 @@ export function TasksTab({
             // Status is the assignee's to report — mirrors the server rule, which
             // rejects it for anyone else (see TaskService.update_task).
             const canSetStatus = task.assignees.some((a) => a.id === currentUserId);
-            // The discussion is private to the submitter and the assignees, so
-            // only show the link to someone who'd actually be let in.
-            const isParticipant = canSetStatus || isCreator;
+            // The discussion is private to the submitter and the assignees —
+            // plus a founder of the company or the platform developer, who may
+            // join any task's thread. Only show the link to someone the server
+            // would actually let in.
+            const canDiscuss = canSetStatus || isCreator || canJoinAnyDiscussion;
             const overdue = isOverdue(task);
             return (
               <Paper key={task.id} variant="outlined" sx={{ p: 2 }}>
@@ -406,7 +413,7 @@ export function TasksTab({
                       />
                     </Stack>
                     <Stack direction="row" spacing={0.5}>
-                      {isParticipant && (
+                      {canDiscuss && (
                         <Tooltip title="Discussion">
                           <IconButton
                             size="small"
