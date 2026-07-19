@@ -114,6 +114,10 @@ export function WorkLogTab({
     teamsApi
       .listTasks(token, team.id, {
         assigneeId: currentUserId,
+        // You can't still be working on something that's done — don't offer
+        // finished tasks to link time against. A previously-linked task that's
+        // since been completed is re-added below when editing that entry.
+        excludeDone: true,
         sort: "deadline",
         limit: 100,
       })
