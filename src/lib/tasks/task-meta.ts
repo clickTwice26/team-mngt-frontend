@@ -133,6 +133,24 @@ export function dueParams(preset: DuePreset): Pick<
   }
 }
 
+/**
+ * A ticking countdown label for a deadline: `"2d 03:15:42"`, `"04:09:59"`.
+ *
+ * Sign-agnostic — it formats the *magnitude* of the gap, so the caller decides
+ * whether that reads as "Due in …" or "Overdue by …". Days appear only once
+ * there's at least one, so a same-day deadline stays a clean `HH:MM:SS`.
+ */
+export function formatCountdown(ms: number): string {
+  const total = Math.floor(Math.abs(ms) / 1000);
+  const days = Math.floor(total / 86400);
+  const hours = Math.floor((total % 86400) / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const clock = `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+  return days > 0 ? `${days}d ${clock}` : clock;
+}
+
 /** A deadline is an instant now, so show the time alongside the date. */
 export function formatDeadline(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {

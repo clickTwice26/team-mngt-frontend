@@ -13,6 +13,7 @@ import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import AccessTimeIcon from "@mui/icons-material/AccessTime";
 import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
 
 import { AppShell } from "@/components/layout/app-shell";
@@ -32,6 +33,7 @@ import {
   PRIORITY_LABELS,
   STATUS_COLORS,
   STATUS_LABELS,
+  formatCountdown,
   formatDeadline,
   isOverdue,
 } from "@/lib/tasks/task-meta";
@@ -200,16 +202,23 @@ function TaskDetails({ task }: { task: Task }) {
         </Stack>
 
         {task.deadline && (
-          <Stack direction="row" spacing={0.5} sx={{ alignItems: "center" }}>
-            <CalendarTodayIcon fontSize="inherit" color={overdue ? "error" : "action"} />
-            <Typography
-              variant="caption"
-              color={overdue ? "error" : "text.secondary"}
-              sx={{ fontWeight: overdue ? 600 : 400 }}
-            >
-              Due {formatDeadline(task.deadline)}
-              {overdue ? " · Overdue" : ""}
-            </Typography>
+          <Stack
+            direction="row"
+            spacing={1}
+            sx={{ alignItems: "center", flexWrap: "wrap", gap: 1 }}
+          >
+            <Stack direction="row" spacing={0.5} sx={{ alignItems: "center" }}>
+              <CalendarTodayIcon fontSize="inherit" color={overdue ? "error" : "action"} />
+              <Typography
+                variant="caption"
+                color={overdue ? "error" : "text.secondary"}
+                sx={{ fontWeight: overdue ? 600 : 400 }}
+              >
+                Due {formatDeadline(task.deadline)}
+              </Typography>
+            </Stack>
+            {/* A done task's deadline is history — no live clock on it. */}
+            {task.status !== "done" && <DeadlineCountdown deadline={task.deadline} />}
           </Stack>
         )}
 
@@ -275,5 +284,39 @@ function TaskDetails({ task }: { task: Task }) {
         </Box>
       </Stack>
     </Paper>
+  );
+}
+
+/**
+ * A live countdown to (or past) a task's deadline, ticking once a second.
+ *
+ * Colour tracks urgency rather than just the overdue flag: red once the instant
+ * has passed, amber inside the final day, quiet otherwise — so a glance reads
+ * how much runway is left, not only whether it's blown. The chip label flips
+ * between "Due in …" and "Overdue by …" around zero.
+ */
+function DeadlineCountdown({ deadline }: { deadline: string }) {
+  const target = new Date(deadline).getTime();
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const remaining = target - now;
+  const overdue = remaining < 0;
+  const color = overdue ? "error" : remaining < 24 * 60 * 60 * 1000 ? "warning" : "default";
+
+  return (
+    <Chip
+      size="small"
+      variant="outlined"
+      color={color}
+      icon={<AccessTimeIcon fontSize="inherit" />}
+      label={`${overdue ? "Overdue by" : "Due in"} ${formatCountdown(remaining)}`}
+      // Tabular figures so the ticking seconds don't jitter the chip's width.
+      sx={{ fontVariantNumeric: "tabular-nums" }}
+    />
   );
 }
