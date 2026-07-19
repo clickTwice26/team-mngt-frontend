@@ -67,6 +67,10 @@ export default function TaskDiscussionPage() {
         teamsApi.listTaskComments(token, teamId, taskId),
       ]);
       setState({ kind: "ok", task, comments });
+      // Opening (or reloading) the thread means the reader is caught up — stamp
+      // it so the tasks board's badge for this task clears. Best-effort: a badge
+      // that lingers is harmless, so never surface a failure here.
+      void teamsApi.markTaskDiscussionRead(token, teamId, taskId).catch(() => {});
     } catch (err) {
       setState({
         kind: "error",

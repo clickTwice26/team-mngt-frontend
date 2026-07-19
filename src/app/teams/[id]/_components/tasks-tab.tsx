@@ -5,6 +5,7 @@ import NextLink from "next/link";
 import Alert from "@mui/material/Alert";
 import Autocomplete from "@mui/material/Autocomplete";
 import Avatar from "@mui/material/Avatar";
+import Badge from "@mui/material/Badge";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
@@ -98,6 +99,10 @@ export function TasksTab({
 
   const [state, setState] = useState<State>({ kind: "loading" });
   const [members, setMembers] = useState<Membership[]>([]);
+  // Unread task-discussion counts, keyed by task id — the badges on each card's
+  // discussion button. Absent id means zero. Fetched on mount, so returning
+  // from a task's thread (a full remount) reflects it as read.
+  const [unread, setUnread] = useState<Record<string, number>>({});
 
   // --- Filtering + paging (all resolved server-side) -------------------------
   const [filters, setFilters] = useState<TaskFilterState>(DEFAULT_FILTERS);
@@ -176,6 +181,21 @@ export function TasksTab({
   useEffect(() => {
     queueMicrotask(load);
   }, [load]);
+
+  useEffect(() => {
+    let cancelled = false;
+    teamsApi
+      .taskDiscussionUnread(token, team.id)
+      .then(({ counts }) => {
+        if (!cancelled) setUnread(counts);
+      })
+      .catch(() => {
+        // A transient failure just leaves the badges as-is (or absent).
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, team.id]);
 
   useEffect(() => {
     teamsApi
@@ -414,14 +434,31 @@ export function TasksTab({
                     </Stack>
                     <Stack direction="row" spacing={0.5}>
                       {canDiscuss && (
-                        <Tooltip title="Discussion">
+                        <Tooltip
+                          title={
+                            unread[task.id]
+                              ? `Discussion · ${unread[task.id]} unread`
+                              : "Discussion"
+                          }
+                        >
                           <IconButton
                             size="small"
                             component={NextLink}
                             href={`/teams/${team.id}/tasks/${task.id}`}
-                            aria-label={`Discussion for ${task.title}`}
+                            aria-label={
+                              unread[task.id]
+                                ? `Discussion for ${task.title}, ${unread[task.id]} unread`
+                                : `Discussion for ${task.title}`
+                            }
                           >
-                            <ChatBubbleOutlineIcon fontSize="small" />
+                            <Badge
+                              badgeContent={unread[task.id] ?? 0}
+                              color="error"
+                              overlap="circular"
+                              max={99}
+                            >
+                              <ChatBubbleOutlineIcon fontSize="small" />
+                            </Badge>
                           </IconButton>
                         </Tooltip>
                       )}

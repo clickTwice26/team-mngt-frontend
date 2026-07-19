@@ -337,6 +337,20 @@ export const teamsApi = {
       { headers: authHeaders(token) },
     ),
 
+  /** Unread comment counts per task — the badges on the tasks board. Only tasks
+   *  with something unread appear; a missing id means zero. */
+  taskDiscussionUnread: (token: string, teamId: string) =>
+    apiClient.get<{ counts: Record<string, number> }>(`/teams/${teamId}/tasks/unread`, {
+      cache: "no-store",
+      headers: authHeaders(token),
+    }),
+
+  /** Mark one task's discussion read up to now, clearing its badge. */
+  markTaskDiscussionRead: (token: string, teamId: string, taskId: string) =>
+    apiClient.post<void>(`/teams/${teamId}/tasks/${taskId}/comments/read`, undefined, {
+      headers: authHeaders(token),
+    }),
+
   // --- Team discussion ---
   // Writes go over HTTP, exactly like every other thread. The WebSocket
   // (useDiscussionSocket) only pushes what was written — it accepts nothing.
