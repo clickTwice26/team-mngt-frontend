@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Alert from "@mui/material/Alert";
 import Avatar from "@mui/material/Avatar";
 import Box from "@mui/material/Box";
@@ -721,14 +721,18 @@ function CommentComposer({
 
   // Paste one or more images straight into the attachments. Anything else on
   // the clipboard (text, a file of another kind) falls through to the default,
-  // so a normal paste still works.
-  const handlePaste = (event: React.ClipboardEvent) => {
-    if (uploading) return;
-    const images = imageFilesFromClipboard(event.clipboardData);
-    if (images.length === 0) return;
-    event.preventDefault();
-    pickerRef.current?.addFiles(images);
-  };
+  // so a normal paste still works. Memoised so MentionInput doesn't rebind the
+  // native listener on every keystroke.
+  const handlePaste = useCallback(
+    (event: ClipboardEvent) => {
+      if (uploading || !event.clipboardData) return;
+      const images = imageFilesFromClipboard(event.clipboardData);
+      if (images.length === 0) return;
+      event.preventDefault();
+      pickerRef.current?.addFiles(images);
+    },
+    [uploading],
+  );
 
   return (
     <Stack

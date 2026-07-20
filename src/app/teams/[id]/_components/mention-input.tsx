@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Avatar from "@mui/material/Avatar";
 import Box from "@mui/material/Box";
 import ClickAwayListener from "@mui/material/ClickAwayListener";
@@ -101,7 +101,10 @@ export function MentionInput({
   minRows?: number;
   helperText?: string;
   onKeyDown?: (event: React.KeyboardEvent) => void;
-  onPaste?: (event: React.ClipboardEvent) => void;
+  /** Native paste on the underlying textarea. Attached directly to the DOM node
+   *  (not via a React prop) because MUI routes unknown handlers to the wrapper,
+   *  not the input — which made clipboard paste unreliable. */
+  onPaste?: (event: ClipboardEvent) => void;
   disabled?: boolean;
 }) {
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -120,6 +123,14 @@ export function MentionInput({
       ? []
       : suggestions.filter((u) => match(u, trigger.query)).slice(0, MAX_SUGGESTIONS);
   const open = matches.length > 0;
+
+  // Paste has to bind to the real <textarea>, not the MUI wrapper.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el || !onPaste) return;
+    el.addEventListener("paste", onPaste);
+    return () => el.removeEventListener("paste", onPaste);
+  }, [onPaste]);
 
   useLayoutEffect(() => {
     if (pendingCaret.current === null) return;
@@ -198,7 +209,6 @@ export function MentionInput({
         onKeyUp={syncTrigger}
         onClick={syncTrigger}
         onKeyDown={handleKeyDown}
-        onPaste={onPaste}
         onBlur={() => setTrigger(null)}
         helperText={helperText}
       />
