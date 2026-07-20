@@ -2,7 +2,7 @@
  * (all require authentication). */
 
 import { apiClient } from "@/lib/api/client";
-import type { Membership, WorkArrangement } from "@/types/membership";
+import type { Membership, MembershipUser, WorkArrangement } from "@/types/membership";
 import type { Activity } from "@/types/activity";
 import type { Meeting, MeetingCreate, MeetingUpdate } from "@/types/meeting";
 import type { MeetingComment, MeetingCommentCreate } from "@/types/meeting-comment";
@@ -344,6 +344,14 @@ export const teamsApi = {
       cache: "no-store",
       headers: authHeaders(token),
     }),
+
+  /** People the current user may @mention in this task's discussion — its own
+   *  audience (submitter, assignees, founders), minus themselves. */
+  listTaskMentionableUsers: (token: string, teamId: string, taskId: string) =>
+    apiClient.get<MembershipUser[]>(
+      `/teams/${teamId}/tasks/${taskId}/comments/mentionable`,
+      { cache: "no-store", headers: authHeaders(token) },
+    ),
 
   /** Mark one task's discussion read up to now, clearing its badge. */
   markTaskDiscussionRead: (token: string, teamId: string, taskId: string) =>

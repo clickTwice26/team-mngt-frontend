@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useId,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import NextLink from "next/link";
 import Alert from "@mui/material/Alert";
 import Backdrop from "@mui/material/Backdrop";
@@ -198,17 +205,15 @@ function AttachmentPreview({ attachment }: { attachment: TaskAttachment }) {
   );
 }
 
-export function AttachmentPicker({
-  value,
-  onChange,
-  upload,
-  allow = ["image", "video", "markdown"],
-  limits,
-  label = "Attachments",
-  disabled,
-  onUploadingChange,
-  windowDrop = true,
-}: {
+/** What a parent can drive on the picker imperatively — used by the comment
+ *  composer to push clipboard-pasted images through the same upload path. */
+export interface AttachmentPickerHandle {
+  /** Upload and attach these files, honouring the same allow-list and limits
+   *  as a drop or a manual pick. */
+  addFiles: (files: File[]) => void;
+}
+
+export const AttachmentPicker = forwardRef<AttachmentPickerHandle, {
   value: TaskAttachment[];
   onChange: (next: TaskAttachment[]) => void;
   /** Uploads one file and returns its stored metadata. */
@@ -222,7 +227,17 @@ export function AttachmentPicker({
   onUploadingChange?: (uploading: boolean) => void;
   /** Accept a file dropped anywhere on the page, not just inside the modal. */
   windowDrop?: boolean;
-}) {
+}>(function AttachmentPicker({
+  value,
+  onChange,
+  upload,
+  allow = ["image", "video", "markdown"],
+  limits,
+  label = "Attachments",
+  disabled,
+  onUploadingChange,
+  windowDrop = true,
+}, ref) {
   const instanceId = useId();
   const [open, setOpen] = useState(false);
   const [preview, setPreview] = useState<TaskAttachment | null>(null);
@@ -322,6 +337,19 @@ export function AttachmentPicker({
   useEffect(() => {
     uploadFilesRef.current = uploadFiles;
   });
+
+  // Let a parent (the comment composer) hand us pasted images, so they go
+  // through the same limits, progress and error handling as any other upload.
+  useImperativeHandle(
+    ref,
+    () => ({
+      addFiles: (files: File[]) => {
+        if (disabled) return;
+        void uploadFilesRef.current(files);
+      },
+    }),
+    [disabled],
+  );
 
   // Claim ownership of window-wide drops while mounted. Re-runs only when the
   // feature is toggled, so the stack order tracks mount order.
@@ -662,4 +690,4 @@ export function AttachmentPicker({
       </Dialog>
     </Box>
   );
-}
+});

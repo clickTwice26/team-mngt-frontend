@@ -15,7 +15,6 @@ import IconButton from "@mui/material/IconButton";
 import Menu from "@mui/material/Menu";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
-import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import AddReactionIcon from "@mui/icons-material/AddReactionOutlined";
@@ -24,13 +23,17 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import HourglassIcon from "@mui/icons-material/HourglassBottom";
 import SendIcon from "@mui/icons-material/Send";
 
-import { AttachmentPicker } from "@/components/attachment-picker";
+import {
+  AttachmentPicker,
+  type AttachmentPickerHandle,
+} from "@/components/attachment-picker";
 import { Markdown } from "@/components/markdown";
 import { ApiError } from "@/lib/api/client";
 import type { MembershipUser } from "@/types/membership";
 import type { TaskAttachment } from "@/types/task";
 
 import { AttachmentView } from "./attachment-view";
+import { MentionInput } from "./mention-input";
 
 /** The shape both task comments and work log comments share. Threading is one
  *  level deep, so `replies` is always empty on a reply. */
@@ -142,6 +145,7 @@ export function CommentThreadList({
   placeholder = "Write a message…",
   submitOnEnter = false,
   reactionChoices,
+  mentionSuggestions = [],
   variant = "page",
 }: {
   comments: ThreadComment[];
@@ -155,6 +159,9 @@ export function CommentThreadList({
   submitOnEnter?: boolean;
   /** The emoji offered on each message. Omit to hide reactions entirely. */
   reactionChoices?: readonly string[];
+  /** People offered by the `@` picker in the composer. Empty (the default)
+   *  turns mentions off — threads that don't have a defined audience omit it. */
+  mentionSuggestions?: MembershipUser[];
   variant?: "page" | "chat";
 }) {
   const messages = (
@@ -177,6 +184,7 @@ export function CommentThreadList({
           actions={actions}
           submitOnEnter={submitOnEnter}
           reactionChoices={reactionChoices}
+          mentionSuggestions={mentionSuggestions}
           variant={variant}
         />
       ))}
@@ -188,6 +196,7 @@ export function CommentThreadList({
       actions={actions}
       placeholder={placeholder}
       submitOnEnter={submitOnEnter}
+      mentionSuggestions={mentionSuggestions}
     />
   );
 
@@ -304,6 +313,7 @@ function CommentThread({
   actions,
   submitOnEnter,
   reactionChoices,
+  mentionSuggestions,
   variant,
 }: {
   comment: ThreadComment;
@@ -311,6 +321,7 @@ function CommentThread({
   actions: ThreadActions;
   submitOnEnter: boolean;
   reactionChoices?: readonly string[];
+  mentionSuggestions: MembershipUser[];
   variant: "page" | "chat";
 }) {
   const [replying, setReplying] = useState(false);
@@ -357,6 +368,7 @@ function CommentThread({
               placeholder="Write a reply…"
               autoFocus
               submitOnEnter={submitOnEnter}
+              mentionSuggestions={mentionSuggestions}
               onCancel={() => setReplying(false)}
               onPosted={() => setReplying(false)}
             />
@@ -606,6 +618,23 @@ function CommentBody({
   );
 }
 
+/**
+ * Image files carried by a paste, if any.
+ *
+ * A screenshot or an image copied from a web page arrives as a clipboard
+ * *item*; images copied from the OS file manager arrive as *files* (and there
+ * can be several). Prefer `files` and only fall back to `items` when it's
+ * empty, so a single image isn't picked up twice.
+ */
+function imageFilesFromClipboard(data: DataTransfer): File[] {
+  const fromFiles = Array.from(data.files).filter((f) => f.type.startsWith("image/"));
+  if (fromFiles.length > 0) return fromFiles;
+  return Array.from(data.items)
+    .filter((it) => it.kind === "file" && it.type.startsWith("image/"))
+    .map((it) => it.getAsFile())
+    .filter((f): f is File => f !== null);
+}
+
 // --- Composer (shared by the thread and each reply) ----------------------------
 
 function CommentComposer({
@@ -614,6 +643,7 @@ function CommentComposer({
   placeholder,
   autoFocus,
   submitOnEnter = false,
+  mentionSuggestions = [],
   onCancel,
   onPosted,
 }: {
@@ -622,6 +652,7 @@ function CommentComposer({
   placeholder: string;
   autoFocus?: boolean;
   submitOnEnter?: boolean;
+  mentionSuggestions?: MembershipUser[];
   onCancel?: () => void;
   onPosted?: () => void;
 }) {
@@ -630,6 +661,8 @@ function CommentComposer({
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Lets us push clipboard-pasted images through the picker's upload path.
+  const pickerRef = useRef<AttachmentPickerHandle>(null);
   // Seconds left on the server's rate limit. Ticks down and re-enables Send on
   // its own, so the composer never sits in a dead state you have to guess your
   // way out of.
@@ -686,6 +719,17 @@ function CommentComposer({
     void submit();
   };
 
+  // Paste one or more images straight into the attachments. Anything else on
+  // the clipboard (text, a file of another kind) falls through to the default,
+  // so a normal paste still works.
+  const handlePaste = (event: React.ClipboardEvent) => {
+    if (uploading) return;
+    const images = imageFilesFromClipboard(event.clipboardData);
+    if (images.length === 0) return;
+    event.preventDefault();
+    pickerRef.current?.addFiles(images);
+  };
+
   return (
     <Stack
       component="form"
@@ -704,20 +748,21 @@ function CommentComposer({
         </Alert>
       )}
 
-      <TextField
-        multiline
-        minRows={2}
-        fullWidth
-        size="small"
+      <MentionInput
+        value={body}
+        onChange={setBody}
+        suggestions={mentionSuggestions}
         autoFocus={autoFocus}
         placeholder={placeholder}
-        value={body}
-        onChange={(e) => setBody(e.target.value)}
         onKeyDown={handleKeyDown}
-        helperText={submitOnEnter ? "Enter to send · Shift+Enter for a new line" : undefined}
+        onPaste={handlePaste}
+        helperText={
+          submitOnEnter ? "Enter to send · Shift+Enter for a new line" : undefined
+        }
       />
 
       <AttachmentPicker
+        ref={pickerRef}
         value={attachments}
         onChange={setAttachments}
         upload={actions.upload}

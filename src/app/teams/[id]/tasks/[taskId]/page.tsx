@@ -21,6 +21,7 @@ import { Markdown } from "@/components/markdown";
 import { useAuth } from "@/context/auth-context";
 import { ApiError } from "@/lib/api/client";
 import { teamsApi } from "@/lib/api/teams";
+import type { MembershipUser } from "@/types/membership";
 import type { Task } from "@/types/task";
 import type { TaskComment } from "@/types/task-comment";
 
@@ -40,7 +41,7 @@ import {
 
 type State =
   | { kind: "loading" }
-  | { kind: "ok"; task: Task; comments: TaskComment[] }
+  | { kind: "ok"; task: Task; comments: TaskComment[]; mentionable: MembershipUser[] }
   | { kind: "error"; message: string };
 
 function initials(name: string | null, email: string): string {
@@ -62,11 +63,16 @@ export default function TaskDiscussionPage() {
   const load = useCallback(async () => {
     if (!token) return;
     try {
-      const [task, comments] = await Promise.all([
+      const [task, comments, mentionable] = await Promise.all([
         teamsApi.getTask(token, teamId, taskId),
         teamsApi.listTaskComments(token, teamId, taskId),
+        // Best-effort: the @ picker degrades to nothing if this fails, which
+        // must never take the whole discussion down with it.
+        teamsApi
+          .listTaskMentionableUsers(token, teamId, taskId)
+          .catch(() => [] as MembershipUser[]),
       ]);
-      setState({ kind: "ok", task, comments });
+      setState({ kind: "ok", task, comments, mentionable });
       // Opening (or reloading) the thread means the reader is caught up — stamp
       // it so the tasks board's badge for this task clears. Best-effort: a badge
       // that lingers is harmless, so never surface a failure here.
@@ -118,7 +124,7 @@ export default function TaskDiscussionPage() {
     );
   }
 
-  const { task, comments } = state;
+  const { task, comments, mentionable } = state;
 
   return (
     <AppShell>
@@ -154,6 +160,7 @@ export default function TaskDiscussionPage() {
             <CommentThreadList
               comments={comments}
               currentUserId={user.id}
+              mentionSuggestions={mentionable}
               actions={{
                 post: (payload) =>
                   teamsApi.createTaskComment(token!, teamId, taskId, payload),

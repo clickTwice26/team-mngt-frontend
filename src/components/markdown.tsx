@@ -3,7 +3,10 @@
 import type { ComponentPropsWithoutRef } from "react";
 import Box from "@mui/material/Box";
 import type { SxProps, Theme } from "@mui/material/styles";
-import ReactMarkdown, { type Components } from "react-markdown";
+import ReactMarkdown, {
+  defaultUrlTransform,
+  type Components,
+} from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 /**
@@ -13,11 +16,30 @@ import remarkGfm from "remark-gfm";
  * enable `rehype-raw`), so arbitrary user input is safe to display here.
  */
 
-// Links always open in a new tab and drop the opener reference.
+/** A @mention is stored as a link with a `mention:` href, e.g.
+ *  `[@Ada Lovelace](mention:507f…)`. Keep those; sanitise every other URL as
+ *  react-markdown normally would (which would otherwise strip `mention:`). */
+function urlTransform(url: string): string {
+  return url.startsWith("mention:") ? url : defaultUrlTransform(url);
+}
+
+// Links always open in a new tab and drop the opener reference — except a
+// @mention, which isn't a destination but a highlighted reference to a person.
 const components: Components = {
-  a: (props: ComponentPropsWithoutRef<"a">) => (
-    <a {...props} target="_blank" rel="noopener noreferrer" />
-  ),
+  a: ({ href, children, ...props }: ComponentPropsWithoutRef<"a">) => {
+    if (href?.startsWith("mention:")) {
+      return (
+        <Box
+          component="span"
+          className="mention"
+          data-user-id={href.slice("mention:".length)}
+        >
+          {children}
+        </Box>
+      );
+    }
+    return <a {...props} href={href} target="_blank" rel="noopener noreferrer" />;
+  },
 };
 
 const baseSx: SxProps<Theme> = {
@@ -43,6 +65,17 @@ const baseSx: SxProps<Theme> = {
   "& li": { my: 0.25 },
   "& li > p": { my: 0 },
   "& a": { color: "primary.main", textDecoration: "underline" },
+  // A @mention reads as a compact highlighted token, not a link.
+  "& .mention": {
+    display: "inline",
+    fontWeight: 600,
+    color: "primary.main",
+    bgcolor: "action.selected",
+    borderRadius: 0.75,
+    px: 0.5,
+    py: 0.125,
+    whiteSpace: "nowrap",
+  },
   "& strong": { fontWeight: 700, color: "text.primary" },
   "& blockquote": {
     my: 1,
@@ -83,7 +116,11 @@ const baseSx: SxProps<Theme> = {
 export function Markdown({ children, sx }: { children: string; sx?: SxProps<Theme> }) {
   return (
     <Box sx={[baseSx, ...(Array.isArray(sx) ? sx : [sx])] as SxProps<Theme>}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={components}
+        urlTransform={urlTransform}
+      >
         {children}
       </ReactMarkdown>
     </Box>
