@@ -38,7 +38,11 @@ const components: Components = {
         </Box>
       );
     }
-    return <a {...props} href={href} target="_blank" rel="noopener noreferrer" />;
+    return (
+      <a {...props} href={href} target="_blank" rel="noopener noreferrer">
+        {children}
+      </a>
+    );
   },
 };
 
