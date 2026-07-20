@@ -161,6 +161,7 @@ export default function TaskDiscussionPage() {
               comments={comments}
               currentUserId={user.id}
               mentionSuggestions={mentionable}
+              submitOnEnter
               actions={{
                 post: (payload) =>
                   teamsApi.createTaskComment(token!, teamId, taskId, payload),
