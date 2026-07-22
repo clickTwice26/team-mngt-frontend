@@ -220,89 +220,110 @@ export default function ProfilePage() {
 
   return (
     <AppShell>
-      <Stack spacing={3} sx={{ maxWidth: 560 }}>
+      <Stack spacing={3}>
         <Typography variant="h4" component="h1" sx={{ fontWeight: 700 }}>
           Profile
         </Typography>
 
-        {uploadState.kind === "error" && (
-          <Alert severity="error" onClose={() => setUploadState({ kind: "idle" })}>
-            {uploadState.message}
-          </Alert>
-        )}
+        <Stack
+          direction={{ xs: "column", md: "row" }}
+          spacing={3}
+          sx={{ alignItems: "flex-start" }}
+        >
+          {/* --- Left: who you are, and your password ------------------------- */}
+          <Stack
+            spacing={3}
+            sx={{ flex: "1 1 0", minWidth: 0, width: "100%", maxWidth: 560 }}
+          >
+            {uploadState.kind === "error" && (
+              <Alert severity="error" onClose={() => setUploadState({ kind: "idle" })}>
+                {uploadState.message}
+              </Alert>
+            )}
 
-        <Paper variant="outlined" sx={{ p: 4 }}>
-          <Stack spacing={3} sx={{ alignItems: "center" }}>
-            <Box sx={{ position: "relative", width: 128, height: 128 }}>
-              <Avatar
-                src={avatarSrc}
-                sx={{
-                  width: 128,
-                  height: 128,
-                  fontSize: 48,
-                  bgcolor: "secondary.main",
-                  opacity: uploading ? 0.5 : 1,
-                }}
-              >
-                {initial}
-              </Avatar>
-              {uploading && (
-                <CircularProgress
-                  size={128}
-                  sx={{ position: "absolute", top: 0, left: 0 }}
-                />
-              )}
-              <IconButton
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading}
-                aria-label="Change profile picture"
-                sx={{
-                  position: "absolute",
-                  bottom: 0,
-                  right: 0,
-                  bgcolor: "primary.main",
-                  color: "primary.contrastText",
-                  "&:hover": { bgcolor: "primary.dark" },
-                }}
-                size="small"
-              >
-                <CameraAltIcon fontSize="small" />
-              </IconButton>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept={ALLOWED_TYPES.join(",")}
-                hidden
-                onChange={(e) => void handleFileChange(e)}
-              />
-            </Box>
+            <Paper variant="outlined" sx={{ p: 4 }}>
+              <Stack spacing={3} sx={{ alignItems: "center" }}>
+                <Box sx={{ position: "relative", width: 128, height: 128 }}>
+                  <Avatar
+                    src={avatarSrc}
+                    sx={{
+                      width: 128,
+                      height: 128,
+                      fontSize: 48,
+                      bgcolor: "secondary.main",
+                      opacity: uploading ? 0.5 : 1,
+                    }}
+                  >
+                    {initial}
+                  </Avatar>
+                  {uploading && (
+                    <CircularProgress
+                      size={128}
+                      sx={{ position: "absolute", top: 0, left: 0 }}
+                    />
+                  )}
+                  <IconButton
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    aria-label="Change profile picture"
+                    sx={{
+                      position: "absolute",
+                      bottom: 0,
+                      right: 0,
+                      bgcolor: "primary.main",
+                      color: "primary.contrastText",
+                      "&:hover": { bgcolor: "primary.dark" },
+                    }}
+                    size="small"
+                  >
+                    <CameraAltIcon fontSize="small" />
+                  </IconButton>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept={ALLOWED_TYPES.join(",")}
+                    hidden
+                    onChange={(e) => void handleFileChange(e)}
+                  />
+                </Box>
 
-            <Stack spacing={1} sx={{ alignItems: "center" }}>
-              <Typography variant="h6">{user.full_name || "Unnamed user"}</Typography>
-              <Typography color="text.secondary">{user.email}</Typography>
-            </Stack>
+                <Stack spacing={1} sx={{ alignItems: "center" }}>
+                  <Typography variant="h6">{user.full_name || "Unnamed user"}</Typography>
+                  <Typography color="text.secondary">{user.email}</Typography>
+                </Stack>
 
-            <Stack direction="row" spacing={1}>
-              <Chip
-                label={user.auth_provider === "google" ? "Google account" : "Email & password"}
-                size="small"
-                variant="outlined"
-              />
-              <Chip label={ROLE_LABELS[user.role] ?? user.role} size="small" color="primary" />
-              {user.is_verified && (
-                <Chip icon={<VerifiedIcon />} label="Verified" size="small" color="success" />
-              )}
-            </Stack>
+                <Stack direction="row" spacing={1}>
+                  <Chip
+                    label={
+                      user.auth_provider === "google" ? "Google account" : "Email & password"
+                    }
+                    size="small"
+                    variant="outlined"
+                  />
+                  <Chip
+                    label={ROLE_LABELS[user.role] ?? user.role}
+                    size="small"
+                    color="primary"
+                  />
+                  {user.is_verified && (
+                    <Chip icon={<VerifiedIcon />} label="Verified" size="small" color="success" />
+                  )}
+                </Stack>
 
-            <Typography variant="caption" color="text.secondary">
-              Member since {new Date(user.created_at).toLocaleDateString()}
-            </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Member since {new Date(user.created_at).toLocaleDateString()}
+                </Typography>
+              </Stack>
+            </Paper>
+
+            <PasswordCard user={user} updateUser={updateUser} />
           </Stack>
-        </Paper>
 
-        <PasswordCard user={user} updateUser={updateUser} />
-
-        <SessionsCard />
+          {/* --- Right: where you're signed in --------------------------------- */}
+          <Box sx={{ flex: "1 1 0", minWidth: 0, width: "100%", maxWidth: { md: 520 } }}>
+            <SessionsCard />
+          </Box>
+        </Stack>
       </Stack>
     </AppShell>
   );

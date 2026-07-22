@@ -16,6 +16,7 @@ import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
 import DialogContentText from "@mui/material/DialogContentText";
 import DialogTitle from "@mui/material/DialogTitle";
+import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
 import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
@@ -157,6 +158,9 @@ export function MeetingsTab({
   const [state, setState] = useState<State>({ kind: "loading" });
   const [members, setMembers] = useState<MembershipUser[]>([]);
   const [selectedDate, setSelectedDate] = useState<Dayjs>(dayjs().startOf("day"));
+  // The month the calendar is *showing*, which drifts from the selected day as
+  // soon as you page through months without picking anything.
+  const [visibleMonth, setVisibleMonth] = useState<Dayjs>(dayjs().startOf("month"));
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Meeting | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Meeting | null>(null);
@@ -203,6 +207,14 @@ export function MeetingsTab({
   const dayMeetings = meetings
     .filter((m) => dayjs(m.scheduled_at).isSame(selectedDate, "day"))
     .sort((a, b) => dayjs(a.scheduled_at).valueOf() - dayjs(b.scheduled_at).valueOf());
+
+  // How much of the shown month is booked into meetings.
+  const monthMeetings = meetings.filter((m) =>
+    dayjs(m.scheduled_at).isSame(visibleMonth, "month"),
+  );
+  const monthMinutes = monthMeetings.reduce((sum, m) => sum + m.duration_minutes, 0);
+
+  const showMonth = (month: Dayjs) => setVisibleMonth(month.startOf("month"));
 
   return (
     <Stack direction={{ xs: "column", md: "row" }} spacing={3} sx={{ alignItems: "flex-start" }}>
@@ -369,10 +381,33 @@ export function MeetingsTab({
       <Paper variant="outlined" sx={{ flexShrink: 0 }}>
         <DateCalendar
           value={selectedDate}
-          onChange={(value) => value && setSelectedDate(value.startOf("day"))}
+          onChange={(value) => {
+            if (!value) return;
+            setSelectedDate(value.startOf("day"));
+            showMonth(value);
+          }}
+          onMonthChange={showMonth}
           slots={{ day: ScheduledDay }}
           slotProps={{ day: { scheduled } as Partial<ScheduledDayProps> }}
         />
+        <Divider />
+        <Stack
+          direction="row"
+          spacing={1}
+          sx={{ px: 2, py: 1.25, alignItems: "baseline", justifyContent: "space-between" }}
+        >
+          <Box>
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              {visibleMonth.format("MMMM YYYY")} total
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              {monthMeetings.length} meeting{monthMeetings.length === 1 ? "" : "s"}
+            </Typography>
+          </Box>
+          <Typography variant="h6" sx={{ fontWeight: 600 }}>
+            {formatDuration(monthMinutes)}
+          </Typography>
+        </Stack>
         <Typography
           variant="caption"
           color="text.secondary"
