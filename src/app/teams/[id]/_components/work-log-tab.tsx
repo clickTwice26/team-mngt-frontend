@@ -11,6 +11,7 @@ import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
+import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
 import LinearProgress from "@mui/material/LinearProgress";
 import MenuItem from "@mui/material/MenuItem";
@@ -146,6 +147,10 @@ export function WorkLogTab({
 
   const weekStart = startOfWeek(dayjs());
   const weekMinutes = minutesInRange(entries, weekStart, weekStart.add(7, "day"));
+  // The month you're *looking at* on the calendar, not necessarily this month —
+  // so paging back to June shows June's total.
+  const monthStart = selectedDate.startOf("month");
+  const monthMinutes = minutesInRange(entries, monthStart, monthStart.add(1, "month"));
   const targetMinutes = hoursPerWeek != null ? hoursPerWeek * 60 : null;
   const remainingMinutes = targetMinutes != null ? targetMinutes - weekMinutes : null;
   const weekProgress =
@@ -158,39 +163,53 @@ export function WorkLogTab({
     <Stack direction={{ xs: "column", md: "row" }} spacing={3} sx={{ alignItems: "flex-start" }}>
       {/* --- Left: the selected day's entries -------------------------------- */}
       <Stack spacing={2} sx={{ flexGrow: 1, minWidth: 0, width: "100%" }}>
-        {targetMinutes != null && (
-          <Paper variant="outlined" sx={{ p: 2 }}>
-            <Stack spacing={1}>
-              <Stack
-                direction="row"
-                sx={{ justifyContent: "space-between", alignItems: "baseline" }}
-              >
-                <Typography variant="subtitle2">This week</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {formatMinutes(weekMinutes)} of {formatMinutes(targetMinutes)}
+        <Paper variant="outlined" sx={{ p: 2 }}>
+          <Stack spacing={1.5}>
+            {targetMinutes != null && (
+              <Stack spacing={1}>
+                <Stack
+                  direction="row"
+                  sx={{ justifyContent: "space-between", alignItems: "baseline" }}
+                >
+                  <Typography variant="subtitle2">This week</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {formatMinutes(weekMinutes)} of {formatMinutes(targetMinutes)}
+                  </Typography>
+                </Stack>
+                <LinearProgress
+                  variant="determinate"
+                  value={weekProgress}
+                  color={overTarget ? "warning" : "primary"}
+                  sx={{ borderRadius: 1, height: 8 }}
+                />
+                <Typography
+                  variant="body2"
+                  color={overTarget ? "warning.main" : "text.secondary"}
+                >
+                  {remainingMinutes === null
+                    ? " "
+                    : remainingMinutes > 0
+                      ? `${formatMinutes(remainingMinutes)} remaining this week`
+                      : remainingMinutes === 0
+                        ? "Weekly target reached"
+                        : `${formatMinutes(-remainingMinutes)} over your weekly target`}
                 </Typography>
               </Stack>
-              <LinearProgress
-                variant="determinate"
-                value={weekProgress}
-                color={overTarget ? "warning" : "primary"}
-                sx={{ borderRadius: 1, height: 8 }}
-              />
-              <Typography
-                variant="body2"
-                color={overTarget ? "warning.main" : "text.secondary"}
-              >
-                {remainingMinutes === null
-                  ? " "
-                  : remainingMinutes > 0
-                    ? `${formatMinutes(remainingMinutes)} remaining this week`
-                    : remainingMinutes === 0
-                      ? "Weekly target reached"
-                      : `${formatMinutes(-remainingMinutes)} over your weekly target`}
+            )}
+
+            {targetMinutes != null && <Divider />}
+
+            <Stack
+              direction="row"
+              sx={{ justifyContent: "space-between", alignItems: "baseline" }}
+            >
+              <Typography variant="subtitle2">{monthStart.format("MMMM YYYY")}</Typography>
+              <Typography variant="body2" color="text.secondary">
+                {formatMinutes(monthMinutes)} logged
               </Typography>
             </Stack>
-          </Paper>
-        )}
+          </Stack>
+        </Paper>
 
         <Stack direction="row" sx={{ justifyContent: "space-between", alignItems: "center" }}>
           <Box>
