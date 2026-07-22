@@ -208,21 +208,16 @@ function TeamDetailPageContent() {
       {/* The hours tab is two columns (entries + calendar), so it needs more
           room than the single-column tabs. */}
       <Stack spacing={3} sx={{ maxWidth: TAB_MAX_WIDTH }}>
-        <Stack spacing={1}>
-          <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
-            <Typography variant="h4" component="h1" sx={{ fontWeight: 700 }}>
-              {team.name}
-            </Typography>
-            <Chip
-              label={team.is_active ? "Active" : "Inactive"}
-              color={team.is_active ? "success" : "default"}
-              size="small"
-              variant="outlined"
-            />
-          </Stack>
-          {team.description && (
-            <Typography color="text.secondary">{team.description}</Typography>
-          )}
+        <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
+          <Typography variant="h4" component="h1" sx={{ fontWeight: 700 }}>
+            {team.name}
+          </Typography>
+          <Chip
+            label={team.is_active ? "Active" : "Inactive"}
+            color={team.is_active ? "success" : "default"}
+            size="small"
+            variant="outlined"
+          />
         </Stack>
 
         <Tabs value={tab} onChange={(_, value: TabKey) => selectTab(value)}>
